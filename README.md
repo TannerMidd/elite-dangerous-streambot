@@ -108,6 +108,36 @@ Click **⚙ Settings** in the dashboard for the common options — changes apply
 | `streamerbot.host/port/endpoint` | `127.0.0.1:8080` `/` | must match Streamer.bot's WebSocket server |
 | `rulesDir` | `rules` | where rule files live |
 
+## Performance
+
+Measured on the live process (Windows 11, Node 20) with the game running, the dashboard connected, and Streamer.bot dispatching — full pipeline: journal parse → session stats → rule evaluation (10 rules) → WebSocket broadcast → Streamer.bot dispatch.
+
+| Metric | Value |
+|---|---|
+| Idle CPU (game running) | **0.73%** of one core |
+| Idle memory | **~48 MB**, flat |
+| Sustained throughput | **~450 events/sec** (real gameplay peaks at a few events/sec) |
+| Pipeline latency | p50 **1.7 ms** · p95 **3.3 ms** · p99 **5.0 ms** (max 51 ms) |
+| Threads / handles | 13 / ~266, stable under load |
+
+```mermaid
+xychart-beta
+    title "Per-event pipeline latency (ms) — 300-event burst"
+    x-axis ["p50", "p95", "p99"]
+    y-axis "milliseconds" 0 --> 6
+    bar [1.69, 3.32, 5.01]
+```
+
+```mermaid
+xychart-beta
+    title "Settled memory by load (MB working set)"
+    x-axis ["idle", "after 300 events", "after 900 events"]
+    y-axis "MB" 0 --> 80
+    bar [48, 57, 63]
+```
+
+Memory growth under load is V8 heap headroom, not accumulation — every server-side buffer is bounded (dispatch log 200, outbox 100, event catalog 500), so long stream sessions plateau around 60–70 MB. The idle CPU is the deliberate 500 ms journal polling (required on Windows — the game holds the journal open, so change notifications are unreliable) plus the dashboard's 5-second status ticker.
+
 ## Security
 
 - The dashboard binds to **127.0.0.1 only**. Rule conditions are executable JavaScript, so exposing the API to a network would hand code execution to anyone who can reach it. Leave `uiHost` alone unless you fully trust every device on the network.
