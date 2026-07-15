@@ -1,0 +1,11 @@
+# Fires when a mission is turned in.
+name: Mission Complete
+enabled: true
+trigger: MissionCompleted
+cooldown: 10
+action: ED Mission Complete
+args:
+  mission: "{{event.LocalisedName}}"
+  faction: "{{event.Faction}}"
+  reward: "{{event.Reward | credits}}"
+  totalThisSession: "{{session.missionsCompleted}}"

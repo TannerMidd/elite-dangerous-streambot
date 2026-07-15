@@ -1,0 +1,13 @@
+# Fires only on bounties worth 250k+ credits.
+name: Big Bounty
+enabled: true
+trigger: Bounty
+when: event.TotalReward >= 250000
+cooldown: 20
+action: ED Big Bounty
+args:
+  reward: "{{event.TotalReward | credits}}"
+  target: "{{event.Target_Localised}}"
+  faction: "{{event.VictimFaction}}"
+  sessionBounties: "{{session.bounties}}"
+  sessionEarnings: "{{session.bountyEarnings | credits}}"

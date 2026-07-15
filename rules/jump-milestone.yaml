@@ -1,0 +1,10 @@
+# Fires every 10th hyperspace jump of the session.
+name: Jump Milestone
+enabled: true
+trigger: FSDJump
+when: session.jumps > 0 && session.jumps % 10 === 0
+action: ED Jump Milestone
+args:
+  jumps: "{{session.jumps}}"
+  distance: "{{session.distanceLy | ly}}"
+  system: "{{event.StarSystem}}"

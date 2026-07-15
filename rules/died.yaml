@@ -1,0 +1,10 @@
+# Fires on ship destruction. Includes session death count for running gags.
+name: Died
+enabled: true
+trigger: Died
+action: ED Died
+args:
+  killer: "{{event.KillerName}}"
+  killerShip: "{{event.KillerShip}}"
+  killerRank: "{{event.KillerRank}}"
+  deathsThisSession: "{{session.deaths}}"

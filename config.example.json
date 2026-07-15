@@ -1,0 +1,10 @@
+{
+  "journalDir": null,
+  "uiPort": 8377,
+  "streamerbot": {
+    "host": "127.0.0.1",
+    "port": 8080,
+    "endpoint": "/"
+  },
+  "rulesDir": "rules"
+}

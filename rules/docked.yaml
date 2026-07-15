@@ -1,0 +1,10 @@
+# Fires when you dock at any station.
+name: Docked
+enabled: true
+trigger: Docked
+cooldown: 10
+action: ED Docked
+args:
+  station: "{{event.StationName}}"
+  system: "{{event.StarSystem}}"
+  stationType: "{{event.StationType}}"

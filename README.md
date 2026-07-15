@@ -1,0 +1,145 @@
+# SimStarr Elite Data
+
+**A real-time bridge between Elite Dangerous and Streamer.bot.** Watches the game's journal as you play and fires Streamer.bot actions when things happen in the black — bounties, interdictions, deaths, first discoveries, rank-ups, low fuel, anything the journal records — driven by a flexible rules engine with a no-code visual builder.
+
+```
+┌─────────────────┐      ┌──────────────────────┐      ┌──────────────┐      ┌─────────────────┐
+│ Elite Dangerous │ ───► │  SimStarr Elite Data │ ───► │ Streamer.bot │ ───► │ sounds · TTS ·  │
+│ journal files   │      │  rules + templates   │  WS  │ your actions │      │ OBS · chat · …  │
+└─────────────────┘      └──────────────────────┘      └──────────────┘      └─────────────────┘
+```
+
+Built for streamers: set it up once, leave it running, and your alerts react to the game with the live data (reward amounts, system names, killer names, session totals) baked in.
+
+## Features
+
+- **Live journal watcher** — tails the active journal reliably (polling, survives file rotation mid-session) and replays the newest log on startup so restarting the app never resets your session totals. Replayed events never re-fire alerts.
+- **Status.json flag events** — synthetic triggers for state transitions the journal doesn't log: `Status.LowFuel`, `Status.Overheating`, `Status.InDanger`, `Status.BeingInterdicted`, `Status.ShieldsDown`, `Status.ShieldsRestored`.
+- **Rules engine** — YAML rules with JavaScript conditions, per-rule cooldowns, and `{{templated | args}}`; hot-reloads on file save.
+- **Visual rule builder** — build or edit rules entirely in the dashboard: type-ahead event names, friendly condition rows with field suggestions taken from your own journal history, Streamer.bot action auto-complete, a plain-English readback, and a YAML preview. Builder and hand-edited files are interchangeable.
+- **Session stats** — running totals (jumps, distance, credits earned, bounties, deaths, first discoveries, …) available to conditions and templates for stateful alerts like *every 10th jump* or *death #N this stream*.
+- **Robust Streamer.bot link** — auto-reconnect with backoff, an outbox that queues alerts while Streamer.bot is down (flushed on reconnect, stale alerts dropped), and per-request response tracking so a rejected action shows up red in the dashboard with the reason instead of failing silently.
+- **Dashboard** — live event inspector (click any event for its raw JSON, or spin a rule straight from it), rule toggles and test-fire buttons, dispatch log, session panel, and an event **simulator** so you can test the entire alert chain without launching the game.
+- **10 preset rules + generated alert sounds** included out of the box.
+
+## Quick start
+
+Requires [Node.js](https://nodejs.org) 18+ and [Streamer.bot](https://streamer.bot).
+
+```bash
+npm install
+npm run build
+npm start
+```
+
+1. Open the dashboard at **http://localhost:8377**.
+2. In Streamer.bot: **Servers/Clients → WebSocket Server → Start Server** (defaults match). The header badge turns green when connected.
+3. Create Streamer.bot actions named to match the presets (`ED Docked`, `ED Big Bounty`, …) — or point the rules at your own actions with each rule's **Edit** button.
+4. Test everything from the **Simulator** panel or a rule's **Test** button — no game needed. Executions appear in Streamer.bot's *Action History* with all variables attached.
+
+Click the title in the dashboard header to rename the app to whatever fits your stream.
+
+## Writing rules
+
+A rule is: **when this game event happens** (and matches your conditions), **run this Streamer.bot action** (with these values). Use the **+ New Rule** builder in the dashboard, or drop YAML files in `rules/` — they hot-reload on save:
+
+```yaml
+name: Big Bounty
+enabled: true
+trigger: Bounty                      # journal event name, a list, or "*"
+when: event.TotalReward >= 250000    # optional JavaScript expression
+cooldown: 20                         # min seconds between firings
+action: ED Big Bounty                # Streamer.bot action to run
+args:                                # each arrives as %variable% in the action
+  reward: "{{event.TotalReward | credits}}"
+  target: "{{event.Target_Localised}}"
+  sessionEarnings: "{{session.bountyEarnings | credits}}"
+```
+
+### Condition scope
+
+`when` expressions see three objects:
+
+| Object | Contents |
+|---|---|
+| `event` | the raw journal event (`event.TotalReward`, `event.StarSystem`, …) |
+| `status` | latest `Status.json` (`status.Fuel.FuelMain`, `status.Flags`, …) |
+| `session` | running session stats (see below) |
+
+A condition that throws (e.g. missing field) simply doesn't match.
+
+### Session stats
+
+`cmdr` · `ship` · `shipName` · `currentSystem` · `currentStation` · `docked` · `jumps` · `distanceLy` · `creditsEarned` · `bounties` · `bountyEarnings` · `missionsCompleted` · `deaths` · `interdictions` · `bodiesScanned` · `firstDiscoveries` · `fuelLevel` · `balance`
+
+### Template filters
+
+`{{path | filter}}` — filters: `credits` (1,234,567 CR) · `number` · `round` · `fixed1` · `ly` · `upper` · `lower`.
+
+## Preset rules
+
+| Rule | Fires on | Streamer.bot action |
+|---|---|---|
+| Docked | `Docked` | `ED Docked` |
+| Interdicted | `Interdicted` (non-Thargoid) | `ED Interdicted` |
+| Thargoid Interdiction | `Interdicted` + `IsThargoid` | `ED Thargoid Encounter` |
+| Died | `Died` | `ED Died` |
+| Big Bounty | `Bounty` ≥ 250,000 CR | `ED Big Bounty` |
+| Rank Up | `Promotion` | `ED Rank Up` |
+| Low Fuel | `Status.LowFuel` | `ED Low Fuel` |
+| First Discovery | undiscovered `Scan` | `ED First Discovery` |
+| Mission Complete | `MissionCompleted` | `ED Mission Complete` |
+| Jump Milestone | every 10th `FSDJump` | `ED Jump Milestone` |
+
+## Alert sounds
+
+`node tools/gen-sounds.mjs` synthesizes a distinct short cue for every preset into `sounds/` (coin arpeggio for bounties, klaxon for low fuel, an ominous drone for Thargoids, …). Wire them up in Streamer.bot with a **Core → Sounds → Play Sound** sub-action on each `ED *` action — or swap in your own audio.
+
+## Configuration
+
+Click **⚙ Settings** in the dashboard for the common options — changes apply live, no restart. Everything is stored in `config.json`:
+
+| Key | Default | Notes |
+|---|---|---|
+| `appTitle` | `SimStarr Elite Data` | dashboard title (or click the header title) |
+| `journalDir` | auto-detect | `%USERPROFILE%\Saved Games\Frontier Developments\Elite Dangerous` |
+| `uiPort` | `8377` | dashboard port (restart to apply) |
+| `uiHost` | `127.0.0.1` | see [Security](#security) before changing |
+| `streamerbot.host/port/endpoint` | `127.0.0.1:8080` `/` | must match Streamer.bot's WebSocket server |
+| `rulesDir` | `rules` | where rule files live |
+
+## Security
+
+- The dashboard binds to **127.0.0.1 only**. Rule conditions are executable JavaScript, so exposing the API to a network would hand code execution to anyone who can reach it. Leave `uiHost` alone unless you fully trust every device on the network.
+- Requests with a non-local `Host` header are rejected (DNS-rebinding protection).
+- Rule files are code — treat third-party rule files with the same caution as Streamer.bot C# actions or OBS scripts.
+
+## Development
+
+```bash
+npm run dev                          # run from TypeScript sources (tsx)
+npm run build                        # compile to dist/
+npm run fake-journal -- <dir> --fast # demo without the game: writes a fake
+                                     # journal; point journalDir at <dir>
+```
+
+### Architecture
+
+```
+src/
+  index.ts              wires the pipeline: watcher → session → rules → dispatch
+  config.ts             config load/save (config.json)
+  journal/watcher.ts    journal tail + replay, Status.json flag transitions
+  state/session.ts      session stat aggregation
+  rules/engine.ts       rule loading, hot reload, evaluation, cooldowns
+  rules/template.ts     {{path | filter}} rendering
+  dispatch/streamerbot.ts  WS client: reconnect, outbox, response tracking
+  server/index.ts       Express + WS: dashboard API, rule CRUD, event catalog
+public/                 dashboard (vanilla JS, no build step)
+rules/                  preset rules (YAML)
+tools/                  fake-journal generator, sound synthesizer
+```
+
+---
+
+*Fly dangerous. o7*

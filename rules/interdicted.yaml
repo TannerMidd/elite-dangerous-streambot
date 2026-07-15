@@ -1,0 +1,12 @@
+# Fires when a human or NPC pulls you out of supercruise.
+name: Interdicted
+enabled: true
+trigger: Interdicted
+when: event.IsThargoid !== true
+cooldown: 15
+action: ED Interdicted
+args:
+  interdictor: "{{event.Interdictor}}"
+  isPlayer: "{{event.IsPlayer}}"
+  submitted: "{{event.Submitted}}"
+  system: "{{session.currentSystem}}"

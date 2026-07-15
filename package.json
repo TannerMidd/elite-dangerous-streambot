@@ -1,0 +1,29 @@
+{
+  "name": "simstarr-elite-data",
+  "version": "0.1.0",
+  "description": "Bridge Elite Dangerous journal data to Streamer.bot alerts with a flexible rules engine",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "fake-journal": "tsx tools/fake-journal.ts"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "chokidar": "^3.6.0",
+    "express": "^4.19.2",
+    "ws": "^8.18.0",
+    "yaml": "^2.4.5"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.14.0",
+    "@types/ws": "^8.5.10",
+    "tsx": "^4.16.0",
+    "typescript": "^5.5.0"
+  }
+}

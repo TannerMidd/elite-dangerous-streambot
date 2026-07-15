@@ -1,0 +1,11 @@
+# Fires on any rank promotion (combat, trade, exploration, federation, empire...).
+name: Rank Up
+enabled: true
+trigger: Promotion
+action: ED Rank Up
+args:
+  combat: "{{event.Combat}}"
+  trade: "{{event.Trade}}"
+  explore: "{{event.Explore}}"
+  federation: "{{event.Federation}}"
+  empire: "{{event.Empire}}"

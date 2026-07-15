@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "simstarr",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["dist/index.js"],
+      "port": 8377
+    }
+  ]
+}

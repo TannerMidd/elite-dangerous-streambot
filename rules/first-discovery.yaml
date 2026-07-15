@@ -1,0 +1,12 @@
+# Fires when you scan a body nobody has ever discovered before.
+name: First Discovery
+enabled: true
+trigger: Scan
+when: event.WasDiscovered === false && event.ScanType !== 'NavBeaconDetail'
+cooldown: 30
+action: ED First Discovery
+args:
+  body: "{{event.BodyName}}"
+  bodyClass: "{{event.PlanetClass}}"
+  starClass: "{{event.StarType}}"
+  totalThisSession: "{{session.firstDiscoveries}}"

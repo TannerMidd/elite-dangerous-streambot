@@ -1,0 +1,9 @@
+# Fires when the ship drops below 25% main fuel (Status.json flag transition).
+name: Low Fuel
+enabled: true
+trigger: Status.LowFuel
+cooldown: 120
+action: ED Low Fuel
+args:
+  fuelMain: "{{event.Fuel.FuelMain | fixed1}}"
+  system: "{{session.currentSystem}}"

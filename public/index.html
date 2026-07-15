@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SimStarr Elite Data</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚀</text></svg>">
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <span class="brand-icon">◈</span>
+      <h1 id="app-title" title="Click to rename the dashboard">SimStarr <span class="accent">Elite Data</span></h1>
+    </div>
+    <div class="conn-badges">
+      <div class="badge" id="badge-journal" title="Elite Dangerous journal directory">
+        <span class="dot"></span> Journal
+      </div>
+      <div class="badge" id="badge-sb" title="Streamer.bot WebSocket server">
+        <span class="dot"></span> Streamer.bot
+      </div>
+      <button id="open-settings" class="btn" title="Connection settings">⚙ Settings</button>
+    </div>
+  </header>
+
+  <main>
+    <aside class="col col-left">
+      <section class="panel">
+        <h2>Session</h2>
+        <div id="session-stats" class="stats-grid"></div>
+      </section>
+      <section class="panel">
+        <h2>Simulator</h2>
+        <p class="hint">Inject a fake game event to test your alerts without launching Elite.</p>
+        <div class="sim-row">
+          <select id="sim-select"></select>
+          <button id="sim-fire" class="btn btn-accent">Fire</button>
+        </div>
+      </section>
+      <section class="panel">
+        <h2>Dispatches</h2>
+        <div id="dispatch-list" class="dispatch-list"></div>
+      </section>
+    </aside>
+
+    <section class="col col-mid panel">
+      <div class="panel-header">
+        <h2>Live Events</h2>
+        <label class="chk"><input type="checkbox" id="hide-replay" checked> hide replayed</label>
+        <button id="clear-events" class="btn btn-ghost">Clear</button>
+      </div>
+      <div id="event-list" class="event-list"></div>
+    </section>
+
+    <section class="col col-right panel">
+      <div class="panel-header">
+        <h2>Rules</h2>
+        <button id="new-rule" class="btn btn-accent">+ New Rule</button>
+        <button id="reload-rules" class="btn btn-ghost" title="Re-read rule files from disk">Reload</button>
+      </div>
+      <p class="hint">A rule is: <b>when this game event happens</b> (and matches your conditions), <b>run this Streamer.bot action</b>. Rules are saved as YAML files in <code>rules/</code> and hot-reload on save.</p>
+      <div id="rule-list" class="rule-list"></div>
+    </section>
+  </main>
+
+  <!-- Rule builder modal -->
+  <div id="builder-overlay" class="overlay hidden">
+    <div class="modal">
+      <div class="modal-head">
+        <h2 id="builder-title">New Rule</h2>
+        <button id="builder-close" class="btn btn-ghost">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="field">
+          <label>Rule name</label>
+          <input id="b-name" type="text" placeholder="e.g. Huge Bounty Hype">
+        </div>
+
+        <div class="field">
+          <label>1 · When this game event happens <span class="lbl-hint">(trigger)</span></label>
+          <input id="b-trigger" type="text" list="trigger-options" placeholder="Start typing… e.g. Bounty, FSDJump, Docked">
+          <datalist id="trigger-options"></datalist>
+          <div class="lbl-hint" id="b-trigger-hint"></div>
+        </div>
+
+        <div class="field">
+          <label>2 · Only if… <span class="lbl-hint">(conditions — optional, leave empty to always fire)</span></label>
+          <div id="b-conditions"></div>
+          <div class="cond-actions">
+            <button id="b-add-cond" class="btn btn-sm">+ Add condition</button>
+            <label class="chk"><input type="checkbox" id="b-advanced"> advanced: write the expression myself</label>
+          </div>
+          <textarea id="b-when" class="hidden" rows="2"
+            placeholder="JavaScript expression, e.g. event.TotalReward >= 250000 && session.jumps > 5"></textarea>
+        </div>
+
+        <div class="field">
+          <label>3 · Run this Streamer.bot action</label>
+          <input id="b-action" type="text" list="action-options" placeholder="Exact action name in Streamer.bot">
+          <datalist id="action-options"></datalist>
+          <div class="lbl-hint" id="b-action-hint"></div>
+        </div>
+
+        <div class="field">
+          <label>4 · Send these values to the action <span class="lbl-hint">(optional — each becomes a %variable% in Streamer.bot)</span></label>
+          <div id="b-args"></div>
+          <div class="cond-actions">
+            <button id="b-add-arg" class="btn btn-sm">+ Add value</button>
+            <select id="b-insert-field" class="sm"><option value="">insert a game value…</option></select>
+          </div>
+        </div>
+
+        <div class="field field-row">
+          <div>
+            <label>Cooldown <span class="lbl-hint">(seconds between firings)</span></label>
+            <input id="b-cooldown" type="number" min="0" value="0" style="width:100px">
+          </div>
+          <label class="chk" style="margin-top:20px"><input type="checkbox" id="b-enabled" checked> enabled</label>
+        </div>
+
+        <div class="field">
+          <label>Plain English</label>
+          <div id="b-summary" class="summary-box"></div>
+        </div>
+
+        <details class="field">
+          <summary class="lbl-hint">Preview the YAML that will be saved</summary>
+          <pre id="b-yaml" class="yaml-box"></pre>
+        </details>
+
+        <div id="b-error" class="rule-err hidden"></div>
+      </div>
+
+      <div class="modal-foot">
+        <button id="builder-delete" class="btn btn-danger hidden">Delete rule</button>
+        <span style="flex:1"></span>
+        <button id="builder-cancel" class="btn">Cancel</button>
+        <button id="builder-save" class="btn btn-accent">Save rule</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings modal -->
+  <div id="settings-overlay" class="overlay hidden">
+    <div class="modal">
+      <div class="modal-head">
+        <h2>Settings</h2>
+        <button id="settings-close" class="btn btn-ghost">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="field">
+          <label>Streamer.bot WebSocket server</label>
+          <div class="lbl-hint" style="margin-bottom:6px">
+            In Streamer.bot: <b>Servers/Clients → WebSocket Server → Start Server</b>. Enter the same
+            address/port here (defaults match Streamer.bot's defaults).
+          </div>
+          <div class="cond-row">
+            <input id="s-host" class="c-field" type="text" placeholder="host, e.g. 127.0.0.1">
+            <input id="s-port" class="c-op" type="text" placeholder="port, e.g. 8080" style="flex:0 0 90px">
+            <input id="s-endpoint" class="c-val" type="text" placeholder="endpoint, e.g. /" style="flex:0 0 70px">
+          </div>
+          <div class="lbl-hint" id="s-sb-state"></div>
+        </div>
+
+        <div class="field">
+          <label>Elite Dangerous journal folder</label>
+          <div class="lbl-hint" style="margin-bottom:6px">
+            Leave empty to auto-detect the standard location. Changing it re-reads the newest journal
+            found there.
+          </div>
+          <input id="s-journal" type="text" placeholder="">
+          <div class="lbl-hint" id="s-journal-state"></div>
+        </div>
+
+        <div id="s-error" class="rule-err hidden"></div>
+      </div>
+      <div class="modal-foot">
+        <span class="lbl-hint">Saved to config.json — dashboard port changes need an app restart.</span>
+        <span style="flex:1"></span>
+        <button id="settings-cancel" class="btn">Cancel</button>
+        <button id="settings-save" class="btn btn-accent">Save &amp; apply</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

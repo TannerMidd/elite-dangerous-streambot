@@ -1,0 +1,9 @@
+# Fires when a Thargoid yanks you out of hyperspace. Maximum panic.
+name: Thargoid Interdiction
+enabled: true
+trigger: Interdicted
+when: event.IsThargoid === true
+cooldown: 30
+action: ED Thargoid Encounter
+args:
+  system: "{{session.currentSystem}}"
