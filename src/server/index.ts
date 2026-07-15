@@ -1,7 +1,6 @@
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import express from 'express';
 import YAML from 'yaml';
 import { WebSocketServer, WebSocket } from 'ws';
@@ -11,10 +10,9 @@ import type { RuleEngine } from '../rules/engine.js';
 import type { StreamerbotClient } from '../dispatch/streamerbot.js';
 import { DEFAULT_TITLE, defaultJournalDir, readRawConfig, writeRawConfig, type AppConfig } from '../config.js';
 import type { DispatchRecord, LoadedRule } from '../types.js';
-import { makeSampleEvent, sampleEventNames, sampleForTrigger, SAMPLE_EVENTS } from '../simulator/events.js';
+import { makeSampleEvent, sampleEventNames, sampleForTrigger } from '../simulator/events.js';
+import { compileSafe, ExprError } from '../rules/safe-eval.js';
 import type { JournalEvent } from '../types.js';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export interface ServerDeps {
   /** Project root (where config.json lives). */
@@ -40,13 +38,21 @@ function ruleView(rule: LoadedRule) {
     cooldown: rule.cooldown ?? 0,
     action: rule.action,
     args: rule.args ?? {},
+    unsafe: rule.unsafe === true,
     lastFired: rule.lastFired,
     fireCount: rule.fireCount,
+    seenCount: rule.seenCount,
     error: rule.error,
   };
 }
 
-export function startServer(deps: ServerDeps): http.Server {
+export interface RunningServer {
+  server: http.Server;
+  /** Push a dispatch record (new or updated) to all connected dashboards. */
+  broadcastDispatch: (record: DispatchRecord) => void;
+}
+
+export function startServer(deps: ServerDeps): RunningServer {
   const { config, watcher, session, engine, streamerbot } = deps;
   const app = express();
 
@@ -67,7 +73,7 @@ export function startServer(deps: ServerDeps): http.Server {
   });
 
   app.use(express.json());
-  app.use(express.static(path.join(__dirname, '..', '..', 'public')));
+  app.use(express.static(path.join(deps.root, 'public')));
 
   const statusPayload = () => ({
     appTitle: config.appTitle,
@@ -77,6 +83,7 @@ export function startServer(deps: ServerDeps): http.Server {
     streamerbot: {
       url: streamerbot.url,
       connected: streamerbot.connected,
+      version: streamerbot.sbVersion,
       queued: streamerbot.queuedCount,
       lastError: streamerbot.lastError,
     },
@@ -201,6 +208,7 @@ export function startServer(deps: ServerDeps): http.Server {
     const when = b.when ? String(b.when).trim() : undefined;
     const cooldown = Number(b.cooldown ?? 0) || 0;
     const enabled = b.enabled !== false;
+    const unsafe = b.unsafe === true;
     const originalName = b.originalName ? String(b.originalName) : null;
     const args: Record<string, string> = {};
     for (const [k, v] of Object.entries(b.args ?? {})) {
@@ -215,11 +223,19 @@ export function startServer(deps: ServerDeps): http.Server {
     if (cooldown < 0) return res.status(400).json({ error: 'Cooldown cannot be negative' });
     if (when) {
       try {
-        new Function('event', 'status', 'session', `"use strict"; return (${when});`);
+        compileSafe(when);
       } catch (err) {
-        return res.status(400).json({
-          error: `Condition is not a valid expression: ${err instanceof Error ? err.message : err}`,
-        });
+        if (!unsafe) {
+          const detail = err instanceof ExprError ? err.message : String(err);
+          return res.status(400).json({ error: `Condition not supported: ${detail}` });
+        }
+        try {
+          new Function('event', 'status', 'session', `"use strict"; return (${when});`);
+        } catch (jsErr) {
+          return res.status(400).json({
+            error: `Condition is not valid JavaScript: ${jsErr instanceof Error ? jsErr.message : jsErr}`,
+          });
+        }
       }
     }
 
@@ -248,6 +264,7 @@ export function startServer(deps: ServerDeps): http.Server {
 
     const def: Record<string, unknown> = { name, enabled, trigger };
     if (when) def.when = when;
+    if (when && unsafe) def.unsafe = true;
     if (cooldown > 0) def.cooldown = cooldown;
     def.action = action;
     if (Object.keys(args).length) def.args = args;
@@ -354,8 +371,5 @@ export function startServer(deps: ServerDeps): http.Server {
     console.log(`[ui] Dashboard running at http://localhost:${config.uiPort} (bound to ${config.uiHost})`);
   });
 
-  // Expose the dispatch broadcaster for index.ts to call.
-  (server as http.Server & { broadcastDispatch?: typeof broadcastDispatch }).broadcastDispatch =
-    broadcastDispatch;
-  return server;
+  return { server, broadcastDispatch };
 }

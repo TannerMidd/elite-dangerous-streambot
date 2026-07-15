@@ -96,10 +96,10 @@
     const sb = $('#badge-sb');
     sb.classList.toggle('on', s.streamerbot.connected);
     sb.innerHTML = `<span class="dot"></span> Streamer.bot ${
-      s.streamerbot.queued ? `<span class="sub">${s.streamerbot.queued} queued</span>` : ''
-    }`;
+      s.streamerbot.connected && s.streamerbot.version ? `<span class="sub">v${esc(s.streamerbot.version)}</span>` : ''
+    }${s.streamerbot.queued ? `<span class="sub">${s.streamerbot.queued} queued</span>` : ''}`;
     sb.title = s.streamerbot.connected
-      ? s.streamerbot.url
+      ? `${s.streamerbot.url}${s.streamerbot.version ? ` — Streamer.bot v${s.streamerbot.version}` : ''}`
       : `${s.streamerbot.url} — ${s.streamerbot.lastError || 'not connected'}`;
 
     renderSession(s.session);
@@ -196,7 +196,8 @@
       const triggers = Array.isArray(r.trigger) ? r.trigger.join(', ') : r.trigger;
       div.innerHTML = `
         <div class="rule-head">
-          <div class="toggle ${r.enabled ? 'on' : ''}" title="Enable/disable"></div>
+          <div class="toggle ${r.enabled ? 'on' : ''}" role="switch" tabindex="0"
+               aria-checked="${r.enabled}" aria-label="Enable rule ${esc(r.name)}" title="Enable/disable"></div>
           <span class="name">${esc(r.name)}</span>
           <button class="btn btn-sm edit-btn" title="Edit this rule in the builder">Edit</button>
           <button class="btn btn-sm test-btn" title="Fire this rule now with a sample event">Test</button>
@@ -207,11 +208,19 @@
           <br><span class="lbl">do</span> ${esc(r.action)}${r.cooldown ? ` <span class="lbl">cooldown</span> ${r.cooldown}s` : ''}
         </div>
         ${r.error ? `<div class="rule-err">⚠ ${esc(r.error)}</div>` : ''}
-        <div class="rule-stats">fired ${r.fireCount}× ${r.lastFired ? `· last ${fmtTime(new Date(r.lastFired).toISOString())}` : ''} · ${esc(r.file)}</div>`;
+        ${r.unsafe ? '<div class="rule-err" style="color:var(--warn)">⚠ unsafe: condition runs as full JavaScript</div>' : ''}
+        <div class="rule-stats">seen ${r.seenCount ?? 0}× · fired ${r.fireCount}× ${r.lastFired ? `· last ${fmtTime(new Date(r.lastFired).toISOString())}` : ''} · ${esc(r.file)}</div>`;
 
-      div.querySelector('.toggle').addEventListener('click', () =>
-        api(`/api/rules/${encodeURIComponent(r.name)}/toggle`, { method: 'POST' }).catch(alertErr),
-      );
+      const toggle = div.querySelector('.toggle');
+      const doToggle = () =>
+        api(`/api/rules/${encodeURIComponent(r.name)}/toggle`, { method: 'POST' }).catch(alertErr);
+      toggle.addEventListener('click', doToggle);
+      toggle.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          doToggle();
+        }
+      });
       div.querySelector('.test-btn').addEventListener('click', () =>
         api(`/api/rules/${encodeURIComponent(r.name)}/test`, { method: 'POST' }).catch(alertErr),
       );
@@ -282,6 +291,7 @@
 
   let catalog = {}; // eventName -> sample event (seeded from simulator, overlaid with the user's real journal)
   let editingOriginalName = null;
+  let editingUnsafe = false; // preserved across edits of rules that opted into full JS
 
   const SESSION_FIELDS = [
     'cmdr', 'ship', 'shipName', 'currentSystem', 'currentStation', 'docked',
@@ -391,7 +401,7 @@
       if (!field) continue;
       const op = OPERATORS.find((o) => o.id === opId);
       if (op.id === 'contains') {
-        parts.push(`String(${field}).toLowerCase().includes(${literalFor(value).toLowerCase()})`);
+        parts.push(`contains(${field}, ${literalFor(value)})`); // case-insensitive
       } else {
         parts.push(`${field} ${op.js} ${literalFor(value)}`);
       }
@@ -403,15 +413,21 @@
   function parseWhen(when) {
     if (!when || !when.trim()) return [];
     const rows = [];
+    const unquote = (v) => {
+      const q = v.match(/^'(.*)'$/) || v.match(/^"(.*)"$/);
+      return q ? q[1] : v;
+    };
     for (const part of when.split('&&').map((p) => p.trim())) {
+      const c = part.match(/^contains\(\s*((?:event|status|session)\.[\w.]+)\s*,\s*(.+?)\s*\)$/);
+      if (c) {
+        rows.push({ field: c[1], op: 'contains', value: unquote(c[2]) });
+        continue;
+      }
       const m = part.match(/^((?:event|status|session)\.[\w.]+)\s*(===|!==|>=|<=|>|<)\s*(.+)$/);
       if (!m) return null;
       const op = OPERATORS.find((o) => o.js === m[2]);
       if (!op) return null;
-      let value = m[3].trim();
-      const q = value.match(/^'(.*)'$/) || value.match(/^"(.*)"$/);
-      if (q) value = q[1];
-      rows.push({ field: m[1], op: op.id, value });
+      rows.push({ field: m[1], op: op.id, value: unquote(m[3].trim()) });
     }
     return rows;
   }
@@ -466,6 +482,7 @@
       action: bAction.value.trim(),
       args,
       enabled: bEnabled.checked,
+      unsafe: editingUnsafe || undefined,
       originalName: editingOriginalName || undefined,
     };
   }
@@ -515,6 +532,7 @@
 
   function openBuilder(rule, presetTrigger) {
     editingOriginalName = rule ? rule.name : null;
+    editingUnsafe = rule ? rule.unsafe === true : false;
     $('#builder-title').textContent = rule ? `Edit: ${rule.name}` : 'New Rule';
     $('#builder-delete').classList.toggle('hidden', !rule);
     bError.classList.add('hidden');
@@ -661,7 +679,7 @@
     $('#s-journal-state').textContent = `Currently watching: ${cfg.journalDirResolved}`;
     $('#s-sb-state').textContent = lastStatus
       ? lastStatus.streamerbot.connected
-        ? `Connected to ${lastStatus.streamerbot.url}`
+        ? `Connected to ${lastStatus.streamerbot.url}${lastStatus.streamerbot.version ? ` (Streamer.bot v${lastStatus.streamerbot.version})` : ''}`
         : `Not connected (${lastStatus.streamerbot.lastError || 'is the WebSocket server started in Streamer.bot?'})`
       : '';
     $('#s-error').classList.add('hidden');

@@ -4,3 +4,5 @@ config.json
 sounds/
 *.log
 .DS_Store
+build/
+release/

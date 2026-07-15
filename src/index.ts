@@ -8,9 +8,19 @@ import { StreamerbotClient } from './dispatch/streamerbot.js';
 import { startServer } from './server/index.js';
 import type { DispatchRecord, LoadedRule, PipelineEvent } from './types.js';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-// Project root: dist/index.js and src/index.ts are both one level below root.
-const ROOT = path.resolve(__dirname, '..');
+/**
+ * App root — where config.json, rules/, and public/ live.
+ * Packaged exe: the folder containing the executable (SIMSTARR_PACKAGED is
+ * baked in at bundle time by scripts/package.mjs — import.meta.url does not
+ * exist inside the CJS single-executable bundle, so it must not be touched
+ * on that path).
+ * From source: the project root (dist/ and src/ sit one level below it).
+ */
+function appRoot(): string {
+  if (process.env.SIMSTARR_PACKAGED === '1') return path.dirname(process.execPath);
+  return path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+}
+const ROOT = appRoot();
 
 const DISPATCH_LOG_LIMIT = 200;
 
@@ -43,10 +53,9 @@ async function main(): Promise<void> {
     return record;
   };
 
-  const server = startServer({ root: ROOT, config, watcher, session, engine, streamerbot, dispatchLog, fireRule });
-  const broadcastDispatch = (server as ReturnType<typeof startServer> & {
-    broadcastDispatch?: (r: DispatchRecord) => void;
-  }).broadcastDispatch;
+  const { server, broadcastDispatch } = startServer({
+    root: ROOT, config, watcher, session, engine, streamerbot, dispatchLog, fireRule,
+  });
 
   watcher.on('event', (pe: PipelineEvent) => {
     // Order matters: state first, so rules see up-to-date session stats

@@ -12,6 +12,7 @@ import type {
   ShipStatus,
 } from '../types.js';
 import { renderArgs } from './template.js';
+import { compileSafe, ExprError } from './safe-eval.js';
 
 export interface RuleMatch {
   rule: LoadedRule;
@@ -23,10 +24,10 @@ export interface RuleMatch {
  * Loads rule files (.yaml/.yml/.json) from a directory, hot-reloads them on
  * change, and evaluates incoming events against them.
  *
- * `when` expressions are compiled with `new Function` over a fixed scope of
- * (event, status, session). Rules are local files authored by the user on
- * their own machine — the same trust level as any other config — so full JS
- * expressiveness is deliberately allowed.
+ * `when` expressions run in a sandboxed evaluator (see safe-eval.ts) so that
+ * shared rule files cannot execute arbitrary code. A rule may opt into full
+ * JavaScript with `unsafe: true`, in which case the expression compiles with
+ * `new Function` — reserved for rules the user wrote themselves.
  *
  * Emits 'reload' after any rules reload.
  */
@@ -112,6 +113,7 @@ export class RuleEngine extends EventEmitter {
           if (prev) {
             loaded.lastFired = prev.lastFired;
             loaded.fireCount = prev.fireCount;
+            loaded.seenCount = prev.seenCount;
           }
           const override = this.overrides.get(loaded.name);
           if (override !== undefined) loaded.enabled = override;
@@ -133,6 +135,7 @@ export class RuleEngine extends EventEmitter {
           predicate: null,
           lastFired: null,
           fireCount: 0,
+          seenCount: 0,
           error: String(err instanceof Error ? err.message : err),
         });
       }
@@ -153,6 +156,7 @@ export class RuleEngine extends EventEmitter {
       predicate: null,
       lastFired: null,
       fireCount: 0,
+      seenCount: 0,
       error: null,
     };
     if (!def.trigger) {
@@ -165,22 +169,38 @@ export class RuleEngine extends EventEmitter {
     }
     if (def.when) {
       try {
-        const fn = new Function(
-          'event',
-          'status',
-          'session',
-          `"use strict"; return !!(${def.when});`,
-        );
+        const fn = compileSafe(def.when);
         loaded.predicate = (event, status, session) => {
           try {
-            return fn(event, status, session) as boolean;
+            return Boolean(fn({ event, status, session }));
           } catch {
-            return false; // a throwing condition (e.g. missing field) just doesn't match
+            return false;
           }
         };
       } catch (err) {
-        loaded.error = `Invalid "when" expression: ${err instanceof Error ? err.message : err}`;
-        loaded.enabled = false;
+        if (def.unsafe === true) {
+          // Explicit opt-in to full JavaScript for this rule.
+          try {
+            const fn = new Function('event', 'status', 'session', `"use strict"; return !!(${def.when});`);
+            loaded.predicate = (event, status, session) => {
+              try {
+                return fn(event, status, session) as boolean;
+              } catch {
+                return false; // a throwing condition (e.g. missing field) just doesn't match
+              }
+            };
+          } catch (jsErr) {
+            loaded.error = `Invalid "when" expression: ${jsErr instanceof Error ? jsErr.message : jsErr}`;
+            loaded.enabled = false;
+          }
+        } else {
+          const detail = err instanceof ExprError ? err.message : String(err);
+          loaded.error =
+            `"when" not supported by the safe evaluator: ${detail}. ` +
+            `Simplify the expression, or add "unsafe: true" to run it as JavaScript ` +
+            `(only for rules you wrote yourself).`;
+          loaded.enabled = false;
+        }
       }
     }
     return loaded;
@@ -208,6 +228,7 @@ export class RuleEngine extends EventEmitter {
       if (!rule.enabled || rule.error) continue;
       if (pipelineEvent.replay && !rule.fireOnReplay) continue;
       if (!this.triggerMatches(rule, e.event)) continue;
+      rule.seenCount += 1; // trigger matched — diagnostic for "why didn't this fire?"
       if (rule.predicate && !rule.predicate(e, status, session)) continue;
       if (rule.cooldown && rule.lastFired && now - rule.lastFired < rule.cooldown * 1000) continue;
 

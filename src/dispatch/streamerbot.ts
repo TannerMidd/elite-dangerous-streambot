@@ -43,6 +43,8 @@ export class StreamerbotClient extends EventEmitter {
   public connected = false;
   public actions: SbAction[] = [];
   public lastError: string | null = null;
+  /** Streamer.bot version reported by GetInfo (null until connected). */
+  public sbVersion: string | null = null;
 
   constructor(opts: StreamerbotOptions) {
     super();
@@ -80,6 +82,7 @@ export class StreamerbotClient extends EventEmitter {
       this.lastError = null;
       console.log(`[streamerbot] Connected to ${this.url}`);
       this.emit('connected');
+      this.sendRaw({ request: 'GetInfo', id: randomUUID() });
       this.requestActions();
       this.flushOutbox();
     });
@@ -95,6 +98,10 @@ export class StreamerbotClient extends EventEmitter {
             console.warn(`[streamerbot] DoAction "${actionName}" failed: ${error}`);
             this.emit('requestError', { id: msg.id, error });
           }
+        }
+        if (msg?.info && typeof msg.info === 'object' && msg.info.version) {
+          this.sbVersion = String(msg.info.version);
+          console.log(`[streamerbot] Streamer.bot v${this.sbVersion}`);
         }
         if (msg?.actions && Array.isArray(msg.actions)) {
           this.actions = msg.actions.map((a: Record<string, unknown>) => ({
@@ -136,6 +143,7 @@ export class StreamerbotClient extends EventEmitter {
     this.opts = opts;
     this.actions = [];
     this.lastError = null;
+    this.sbVersion = null;
     this.reconnectDelay = 1000;
     this.start();
   }

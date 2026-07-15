@@ -15,7 +15,7 @@ Built for streamers: set it up once, leave it running, and your alerts react to 
 
 - **Live journal watcher** — tails the active journal reliably (polling, survives file rotation mid-session) and replays the newest log on startup so restarting the app never resets your session totals. Replayed events never re-fire alerts.
 - **Status.json flag events** — synthetic triggers for state transitions the journal doesn't log: `Status.LowFuel`, `Status.Overheating`, `Status.InDanger`, `Status.BeingInterdicted`, `Status.ShieldsDown`, `Status.ShieldsRestored`.
-- **Rules engine** — YAML rules with JavaScript conditions, per-rule cooldowns, and `{{templated | args}}`; hot-reloads on file save.
+- **Rules engine** — YAML rules with **sandboxed** conditions (no arbitrary code from shared rule files), per-rule cooldowns, and `{{templated | args}}`; hot-reloads on file save.
 - **Visual rule builder** — build or edit rules entirely in the dashboard: type-ahead event names, friendly condition rows with field suggestions taken from your own journal history, Streamer.bot action auto-complete, a plain-English readback, and a YAML preview. Builder and hand-edited files are interchangeable.
 - **Session stats** — running totals (jumps, distance, credits earned, bounties, deaths, first discoveries, …) available to conditions and templates for stateful alerts like *every 10th jump* or *death #N this stream*.
 - **Robust Streamer.bot link** — auto-reconnect with backoff, an outbox that queues alerts while Streamer.bot is down (flushed on reconnect, stale alerts dropped), and per-request response tracking so a rejected action shows up red in the dashboard with the reason instead of failing silently.
@@ -24,7 +24,13 @@ Built for streamers: set it up once, leave it running, and your alerts react to 
 
 ## Quick start
 
-Requires [Node.js](https://nodejs.org) 18+ and [Streamer.bot](https://streamer.bot).
+### Option A — packaged exe (no Node.js required)
+
+Grab `simstarr-elite-data-win-x64.zip` from the repo's releases/CI artifacts (or build it yourself with `npm run package`), unzip to a normal folder, and double-click **SimStarrEliteData.exe**. Windows SmartScreen may warn because the exe is unsigned — *More info → Run anyway*. Keep the folder together: the exe reads `public/`, `rules/`, and `sounds/` from beside itself and saves your settings to `config.json` there.
+
+### Option B — from source
+
+Requires [Node.js](https://nodejs.org) 18+ and [Streamer.bot](https://streamer.bot) (tested against v1.0.4; the dashboard shows the connected version).
 
 ```bash
 npm install
@@ -47,7 +53,7 @@ A rule is: **when this game event happens** (and matches your conditions), **run
 name: Big Bounty
 enabled: true
 trigger: Bounty                      # journal event name, a list, or "*"
-when: event.TotalReward >= 250000    # optional JavaScript expression
+when: event.TotalReward >= 250000    # optional condition (sandboxed, see below)
 cooldown: 20                         # min seconds between firings
 action: ED Big Bounty                # Streamer.bot action to run
 args:                                # each arrives as %variable% in the action
@@ -56,17 +62,24 @@ args:                                # each arrives as %variable% in the action
   sessionEarnings: "{{session.bountyEarnings | credits}}"
 ```
 
-### Condition scope
+### Conditions (`when`)
 
-`when` expressions see three objects:
+Conditions run in a **sandboxed evaluator** — safe to use in rule files you got from someone else, because they cannot execute code. Supported:
 
-| Object | Contents |
+- **Values**: dotted paths on `event.*`, `status.*`, `session.*` (missing fields read as `undefined` and simply don't match), numbers, `'strings'`, `true`/`false`/`null`
+- **Comparisons**: `===` `!==` `>=` `<=` `>` `<` (`==`/`!=` behave like the strict forms)
+- **Logic & math**: `&&` `||` `!` `( )` and `+ - * / %` — so `session.jumps % 10 === 0` works
+- **Functions** (string matching is case-insensitive): `contains(a, b)`, `startsWith`, `endsWith`, `lower`, `upper`, `len`, `abs`, `round`, `min`, `max`
+
+| Scope object | Contents |
 |---|---|
 | `event` | the raw journal event (`event.TotalReward`, `event.StarSystem`, …) |
 | `status` | latest `Status.json` (`status.Fuel.FuelMain`, `status.Flags`, …) |
 | `session` | running session stats (see below) |
 
-A condition that throws (e.g. missing field) simply doesn't match.
+If you need something the sandbox can't express, add `unsafe: true` to the rule — its condition then runs as full JavaScript. Only do that for rules **you wrote yourself**; the dashboard marks such rules with a warning.
+
+Each rule card shows `seen N× · fired M×` — *seen* counts trigger matches, so "seen 12× fired 0×" means your condition is filtering everything out, while "seen 0×" means the trigger name is wrong.
 
 ### Session stats
 
@@ -140,18 +153,24 @@ Memory growth under load is V8 heap headroom, not accumulation — every server-
 
 ## Security
 
-- The dashboard binds to **127.0.0.1 only**. Rule conditions are executable JavaScript, so exposing the API to a network would hand code execution to anyone who can reach it. Leave `uiHost` alone unless you fully trust every device on the network.
+- **Rule conditions are sandboxed.** Shared rule files cannot execute code — the `when` evaluator only supports comparisons, boolean logic, arithmetic, and a fixed function set. Full JavaScript requires an explicit per-rule `unsafe: true`, flagged in the dashboard; only enable it on rules you wrote yourself.
+- The dashboard binds to **127.0.0.1 only**; leave `uiHost` alone unless you fully trust every device on the network.
 - Requests with a non-local `Host` header are rejected (DNS-rebinding protection).
-- Rule files are code — treat third-party rule files with the same caution as Streamer.bot C# actions or OBS scripts.
 
 ## Development
 
 ```bash
 npm run dev                          # run from TypeScript sources (tsx)
 npm run build                        # compile to dist/
+npm test                             # unit tests (node:test) — evaluator,
+                                     # templates, session stats, rules engine
+npm run package                      # build the standalone Windows exe
+                                     # (Node SEA) into release/
 npm run fake-journal -- <dir> --fast # demo without the game: writes a fake
                                      # journal; point journalDir at <dir>
 ```
+
+CI (GitHub Actions) builds and tests on Ubuntu and Windows on every push, and produces the packaged exe as a build artifact.
 
 ### Architecture
 

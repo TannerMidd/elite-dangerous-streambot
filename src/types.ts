@@ -68,6 +68,12 @@ export interface RuleDefinition {
   args?: Record<string, string>;
   /** Fire on replayed events too (default false; almost never what you want). */
   fireOnReplay?: boolean;
+  /**
+   * Allow full JavaScript in `when` (runs with new Function). Off by default:
+   * shared rule files should not be able to execute arbitrary code. Only set
+   * this on rules you wrote yourself.
+   */
+  unsafe?: boolean;
 }
 
 export interface LoadedRule extends RuleDefinition {
@@ -77,6 +83,8 @@ export interface LoadedRule extends RuleDefinition {
   predicate: ((event: JournalEvent, status: ShipStatus | null, session: SessionStats) => boolean) | null;
   lastFired: number | null;
   fireCount: number;
+  /** How many live events matched this rule's trigger (condition or not). */
+  seenCount: number;
   /** Set when the rule file failed to compile; rule is skipped. */
   error: string | null;
 }
