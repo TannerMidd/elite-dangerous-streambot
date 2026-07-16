@@ -356,7 +356,8 @@
       <p><a href="https://github.com/TannerMidd/elite-dangerous-streambot/blob/main/extras/ed-journal-watcher.cs"><code>extras/ed-journal-watcher.cs</code></a>
       is the whole bridge condensed into <strong>one Streamer.bot C# action</strong>. It reads the Elite Dangerous
       journal itself on a background worker inside Streamer.bot — the Elite Streambot app doesn't need to be
-      running (or even installed). Paste it once and Streamer.bot itself understands Elite Dangerous.</p>
+      running (or even installed). It compiles with Streamer.bot's default references — no additions in the
+      References tab needed. Paste it once and Streamer.bot itself understands Elite Dangerous.</p>
 
       <h3>Native triggers, straight from the game</h3>
       <p>The watcher registers real entries in Streamer.bot's trigger menu, so you build automations exactly the
@@ -401,8 +402,8 @@
         <li><strong>First run is quiet</strong> — it rebuilds state from your current journal without firing a
           trigger for every historical line, and a big offline backlog updates variables while suppressing the
           trigger flood.</li>
-        <li><strong>Instant + safe</strong> — file-system notifications wake it immediately, with a once-a-second
-          safety scan as a fallback; journal rollovers and mid-write files are handled.</li>
+        <li><strong>Steady + safe</strong> — it checks the journal once a second (negligible load); journal
+          rollovers and mid-write files are handled.</li>
       </ul>
 
       <h3>Setup (once)</h3>

@@ -1,8 +1,13 @@
 // ============================================================================
 // Elite Dangerous -> Streamer.bot — the complete standalone journal watcher.
 //
-// One C# sub-action. No external app. It reads the Elite Dangerous journal
-// and companion files on a background worker and gives you BOTH:
+// One C# sub-action. No external app, and no extra assembly references —
+// this file deliberately uses only types Streamer.bot's C# compiler can see
+// by default (no LINQ, no HashSet, no FileSystemWatcher), so it compiles
+// with a plain paste.
+//
+// It reads the Elite Dangerous journal and companion files on a background
+// worker and gives you BOTH:
 //
 //   NATIVE TRIGGERS (bind actions in Streamer.bot's own trigger menu)
 //     Elite Dangerous > Any Journal Event          every live journal line
@@ -37,10 +42,8 @@
 //     - Checkpoint/resume: the exact byte position survives Streamer.bot
 //       restarts — no reprocessing, no duplicate trigger storms. First run
 //       hydrates state from the newest journal WITHOUT firing triggers.
-//     - FileSystemWatcher wake-up + 1s safety scan (journal writes are
-//       detected instantly when Windows cooperates, and within a second
-//       when it doesn't).
-//     - Journal rollover drains the old file before switching to the new one.
+//     - Scans once per second; journal rollover drains the old file before
+//       switching to the new one; mid-write files are retried.
 //     - A large offline backlog (Streamer.bot closed while you played)
 //       updates variables but suppresses the trigger flood.
 //
@@ -68,7 +71,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
@@ -79,7 +81,7 @@ public class CPHInline
 {
     // ---- settings ----------------------------------------------------------
     private const string Prefix = "ed";       // prefix for every variable
-    private const int ScanMs = 1000;          // safety-scan interval (FSW wakes earlier)
+    private const int ScanMs = 1000;          // journal/status scan interval
     private const int MaxVariables = 5000;    // cap on distinct globals
     private const int MaxValueLen = 400;      // long strings/arrays truncated/skipped
     private const int MaxJsonArg = 4000;      // event JSON length passed to triggers
@@ -105,7 +107,6 @@ public class CPHInline
     private static volatile bool _running;
     private static AutoResetEvent _wake;
     private readonly object _lifecycle = new object();
-    private FileSystemWatcher _fsw;
 
     public void Init()
     {
@@ -141,7 +142,9 @@ public class CPHInline
             }
             _running = true;
             _wake = new AutoResetEvent(false);
-            _worker = new Thread(Loop) { IsBackground = true, Name = "EDJournalWatcher" };
+            _worker = new Thread(Loop);
+            _worker.IsBackground = true;
+            _worker.Name = "EDJournalWatcher";
             _worker.Start();
         }
         CPH.LogInfo("[ED] Journal watcher started.");
@@ -156,13 +159,12 @@ public class CPHInline
             if (!_running) return true;
             _running = false;
             worker = _worker;
-            if (_wake != null) _wake.Set();
+            if (_wake != null) { try { _wake.Set(); } catch { } }
         }
         if (worker != null && worker.IsAlive) worker.Join(3000);
         lock (_lifecycle)
         {
-            DisposeFsw();
-            if (_wake != null) { _wake.Dispose(); _wake = null; }
+            if (_wake != null) { try { _wake.Dispose(); } catch { } _wake = null; }
             _worker = null;
         }
         FireStatus("stopped", "Watcher stopped.");
@@ -175,7 +177,8 @@ public class CPHInline
     public bool ResetState()
     {
         StopWatcher();
-        foreach (string name in _allNames.ToArray()) UnsetVar(name);
+        var names = new List<string>(_allNames.Keys);
+        foreach (string name in names) UnsetVar(name);
         _allNames.Clear();
         _eventTypes.Clear();
         _flagTriggers.Clear();
@@ -239,18 +242,19 @@ public class CPHInline
                  _interdictions, _scans, _firstDiscoveries;
     private double _distanceLy;
 
-    // publishing
+    // publishing (Dictionary<string,bool> stands in for a string set — the
+    // default Streamer.bot compile has no HashSet reference)
     private readonly Dictionary<string, object> _pending = new Dictionary<string, object>(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _pushed = new Dictionary<string, string>(StringComparer.Ordinal);
-    private readonly HashSet<string> _allNames = new HashSet<string>(StringComparer.Ordinal);
+    private readonly Dictionary<string, bool> _allNames = new Dictionary<string, bool>(StringComparer.Ordinal);
     private bool _namesDirty;
     private bool _capWarned;
 
     // mirrors & triggers
     private readonly Dictionary<string, long> _eventCounts = new Dictionary<string, long>(StringComparer.Ordinal);
-    private readonly Dictionary<string, HashSet<string>> _typeFields = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
-    private readonly HashSet<string> _eventTypes = new HashSet<string>(StringComparer.Ordinal);
-    private readonly HashSet<string> _flagTriggers = new HashSet<string>(StringComparer.Ordinal);
+    private readonly Dictionary<string, Dictionary<string, bool>> _typeFields = new Dictionary<string, Dictionary<string, bool>>(StringComparer.Ordinal);
+    private readonly Dictionary<string, bool> _eventTypes = new Dictionary<string, bool>(StringComparer.Ordinal);
+    private readonly Dictionary<string, bool> _flagTriggers = new Dictionary<string, bool>(StringComparer.Ordinal);
     private long _lastFlags = -1, _lastFlags2 = -1;
 
     // companion files
@@ -274,9 +278,9 @@ public class CPHInline
 
     private void ReRegisterDynamicTriggers()
     {
-        foreach (string type in _eventTypes)
+        foreach (string type in _eventTypes.Keys)
             SafeRegister(type, TrigEventPrefix + type, new[] { "Elite Dangerous", "Journal Events" });
-        foreach (string ft in _flagTriggers)
+        foreach (string ft in _flagTriggers.Keys)
         {
             // stored as "<Flag>|on" / "<Flag>|off"
             int sep = ft.LastIndexOf('|');
@@ -303,119 +307,57 @@ public class CPHInline
 
     private void FireStatus(string status, string message)
     {
-        var args = new Dictionary<string, object>(StringComparer.Ordinal)
-        {
-            { Prefix + "Status", status },
-            { Prefix + "Message", message },
-            { Prefix + "JournalFile", _file == null ? "" : Path.GetFileName(_file) },
-        };
+        var args = new Dictionary<string, object>(StringComparer.Ordinal);
+        args[Prefix + "Status"] = status;
+        args[Prefix + "Message"] = message;
+        args[Prefix + "JournalFile"] = _file == null ? "" : Path.GetFileName(_file);
         SafeFire(TrigStatus, args);
     }
 
     // ---- main loop ------------------------------------------------------------
     private void Loop()
     {
-        try
+        _dir = ResolveJournalDir();
+        LoadCheckpoint();
+        FireStatus("started", "Watcher started: " + _dir);
+
+        while (_running)
         {
-            _dir = ResolveJournalDir();
-            LoadCheckpoint();
-            FireStatus("started", "Watcher started: " + _dir);
-
-            while (_running)
+            try
             {
-                try
+                if (!Directory.Exists(_dir))
                 {
-                    if (!Directory.Exists(_dir))
+                    if (!_dirWarned)
                     {
-                        DisposeFsw();
-                        if (!_dirWarned)
-                        {
-                            _dirWarned = true;
-                            CPH.LogWarn("[ED] Journal folder not found yet: " + _dir);
-                            FireStatus("error", "Journal folder not found: " + _dir);
-                        }
-                    }
-                    else
-                    {
-                        _dirWarned = false;
-                        EnsureFsw();
-                        lock (_stateLock)
-                        {
-                            ProcessJournal();
-                            ReadStatusFile();
-                            ScanCompanions();
-                            BuildAggregates();
-                            SaveCheckpoint();
-                        }
-                        Publish();
+                        _dirWarned = true;
+                        CPH.LogWarn("[ED] Journal folder not found yet: " + _dir);
+                        FireStatus("error", "Journal folder not found: " + _dir);
                     }
                 }
-                catch (Exception ex)
+                else
                 {
-                    CPH.LogWarn("[ED] Watcher recovered from: " + ex.Message);
+                    _dirWarned = false;
+                    lock (_stateLock)
+                    {
+                        ProcessJournal();
+                        ReadStatusFile();
+                        ScanCompanions();
+                        BuildAggregates();
+                        SaveCheckpoint();
+                    }
+                    Publish();
                 }
-
-                AutoResetEvent wake = _wake;
-                if (wake == null) break;
-                try { wake.WaitOne(ScanMs); }
-                catch (ObjectDisposedException) { break; }
             }
-        }
-        finally
-        {
-            DisposeFsw();
-        }
-    }
-
-    private void EnsureFsw()
-    {
-        if (_fsw != null) return;
-        try
-        {
-            var fsw = new FileSystemWatcher(_dir)
+            catch (Exception ex)
             {
-                IncludeSubdirectories = false,
-                NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size,
-            };
-            FileSystemEventHandler poke = delegate { Wake(); };
-            fsw.Changed += poke;
-            fsw.Created += poke;
-            fsw.Deleted += poke;
-            fsw.Renamed += delegate { Wake(); };
-            fsw.Error += delegate
-            {
-                // Notification buffer overflowed — the safety scan covers us.
-                DisposeFsw();
-                Wake();
-            };
-            fsw.EnableRaisingEvents = true;
-            _fsw = fsw;
-        }
-        catch (Exception ex)
-        {
-            CPH.LogDebug("[ED] FileSystemWatcher unavailable (" + ex.Message + "); relying on the safety scan.");
-        }
-    }
+                CPH.LogWarn("[ED] Watcher recovered from: " + ex.Message);
+            }
 
-    private void DisposeFsw()
-    {
-        FileSystemWatcher fsw = _fsw;
-        _fsw = null;
-        if (fsw == null) return;
-        try
-        {
-            fsw.EnableRaisingEvents = false;
-            fsw.Dispose();
+            AutoResetEvent wake = _wake;
+            if (wake == null) break;
+            try { wake.WaitOne(ScanMs); }
+            catch (ObjectDisposedException) { break; }
         }
-        catch { }
-    }
-
-    private void Wake()
-    {
-        AutoResetEvent wake = _wake;
-        if (wake == null) return;
-        try { wake.Set(); }
-        catch (ObjectDisposedException) { }
     }
 
     // ---- journal directory / checkpoint ----------------------------------------
@@ -493,15 +435,29 @@ public class CPHInline
         Set(Prefix + "RuntimeJournalPos", _offset.ToString(System.Globalization.CultureInfo.InvariantCulture));
     }
 
+    /// Newest = latest write time, ties broken by name (no LINQ on purpose).
     private string FindNewestJournal()
     {
         try
         {
             if (!Directory.Exists(_dir)) return null;
-            return Directory.GetFiles(_dir, "Journal.*.log")
-                            .OrderByDescending(File.GetLastWriteTimeUtc)
-                            .ThenByDescending(f => f, StringComparer.OrdinalIgnoreCase)
-                            .FirstOrDefault();
+            string[] files = Directory.GetFiles(_dir, "Journal.*.log");
+            string best = null;
+            DateTime bestTime = DateTime.MinValue;
+            foreach (string f in files)
+            {
+                DateTime t;
+                try { t = File.GetLastWriteTimeUtc(f); }
+                catch (IOException) { continue; }
+                if (best == null
+                    || t > bestTime
+                    || (t == bestTime && string.Compare(f, best, StringComparison.OrdinalIgnoreCase) > 0))
+                {
+                    best = f;
+                    bestTime = t;
+                }
+            }
+            return best;
         }
         catch (IOException) { return null; }
         catch (UnauthorizedAccessException) { return null; }
@@ -561,10 +517,19 @@ public class CPHInline
             buf = new byte[fs.Length - _offset];
             int read = fs.Read(buf, 0, buf.Length);
             if (read <= 0) return;
-            if (read < buf.Length) Array.Resize(ref buf, read);
+            if (read < buf.Length)
+            {
+                byte[] trimmed = new byte[read];
+                Array.Copy(buf, trimmed, read);
+                buf = trimmed;
+            }
         }
 
-        int lastNl = Array.LastIndexOf(buf, (byte)'\n');
+        int lastNl = -1;
+        for (int i = buf.Length - 1; i >= 0; i--)
+        {
+            if (buf[i] == (byte)'\n') { lastNl = i; break; }
+        }
         if (lastNl < 0) return; // no complete line yet
         _offset += lastNl + 1;
 
@@ -576,7 +541,8 @@ public class CPHInline
             if (line.Length == 0) continue;
             try
             {
-                var settings = new JsonSerializerSettings { DateParseHandling = DateParseHandling.None };
+                var settings = new JsonSerializerSettings();
+                settings.DateParseHandling = DateParseHandling.None;
                 JObject o = JsonConvert.DeserializeObject<JObject>(line, settings);
                 if (o != null) parsed.Add(o);
             }
@@ -608,19 +574,18 @@ public class CPHInline
         // Register the per-type trigger as soon as the type is known — even
         // during hydration — so it is bindable in the UI before it next fires.
         string safe = Sanitize(evt);
-        if (_eventTypes.Add(safe))
+        if (!_eventTypes.ContainsKey(safe))
         {
+            _eventTypes[safe] = true;
             SafeRegister(evt, TrigEventPrefix + safe, new[] { "Elite Dangerous", "Journal Events" });
             PersistRegistry(Prefix + "RuntimeEventTypesJson", _eventTypes);
         }
 
         if (!fireTriggers) return;
 
-        var args = new Dictionary<string, object>(StringComparer.Ordinal)
-        {
-            { Prefix + "EventName", evt },
-            { Prefix + "EventTimestamp", Str(e, "timestamp", "") },
-        };
+        var args = new Dictionary<string, object>(StringComparer.Ordinal);
+        args[Prefix + "EventName"] = evt;
+        args[Prefix + "EventTimestamp"] = Str(e, "timestamp", "");
         string json = e.ToString(Formatting.None);
         args[Prefix + "EventJson"] = json.Length <= MaxJsonArg ? json : json.Substring(0, MaxJsonArg);
         foreach (var prop in e.Properties())
@@ -647,7 +612,7 @@ public class CPHInline
         Set(baseKey + "Count", count);
         Set(baseKey + "Last", Str(e, "timestamp", ""));
 
-        if (MirrorExclude.Contains(evt)) return;
+        if (Array.IndexOf(MirrorExclude, evt) >= 0) return;
 
         var fields = new Dictionary<string, object>(StringComparer.Ordinal);
         foreach (var prop in e.Properties())
@@ -656,14 +621,19 @@ public class CPHInline
             FlattenInto(fields, baseKey + "_" + Sanitize(prop.Name), prop.Value, 0);
         }
 
-        HashSet<string> previous;
+        Dictionary<string, bool> previous;
         if (_typeFields.TryGetValue(safe, out previous))
         {
-            foreach (string old in previous)
+            foreach (string old in previous.Keys)
                 if (!fields.ContainsKey(old)) UnsetVar(old);
         }
-        foreach (var kv in fields) Set(kv.Key, kv.Value);
-        _typeFields[safe] = new HashSet<string>(fields.Keys, StringComparer.Ordinal);
+        var current = new Dictionary<string, bool>(StringComparer.Ordinal);
+        foreach (var kv in fields)
+        {
+            Set(kv.Key, kv.Value);
+            current[kv.Key] = true;
+        }
+        _typeFields[safe] = current;
     }
 
     /// Flatten any JSON value into a sink. Objects flatten with underscores
@@ -923,20 +893,19 @@ public class CPHInline
             string flag = names[i];
             string edge = now ? "on" : "off";
             string regKey = flag + "|" + edge;
-            if (_flagTriggers.Add(regKey))
+            if (!_flagTriggers.ContainsKey(regKey))
             {
+                _flagTriggers[regKey] = true;
                 SafeRegister(flag + (now ? " On" : " Off"),
                     TrigFlagPrefix + flag + "." + edge,
                     new[] { "Elite Dangerous", "Ship State" });
                 PersistRegistry(Prefix + "RuntimeFlagTriggersJson", _flagTriggers);
             }
 
-            var args = new Dictionary<string, object>(StringComparer.Ordinal)
-            {
-                { Prefix + "Flag", flag },
-                { Prefix + "Value", now },
-                { Prefix + "System", _system },
-            };
+            var args = new Dictionary<string, object>(StringComparer.Ordinal);
+            args[Prefix + "Flag"] = flag;
+            args[Prefix + "Value"] = now;
+            args[Prefix + "System"] = _system;
             SafeFire(TrigAnyFlag, args);
             SafeFire(TrigFlagPrefix + flag + "." + edge, args);
         }
@@ -1002,11 +971,9 @@ public class CPHInline
 
             if (_companionBaseline)
             {
-                var args = new Dictionary<string, object>(StringComparer.Ordinal)
-                {
-                    { Prefix + "CompanionName", name },
-                    { Prefix + "CompanionFile", Path.GetFileName(path) },
-                };
+                var args = new Dictionary<string, object>(StringComparer.Ordinal);
+                args[Prefix + "CompanionName"] = name;
+                args[Prefix + "CompanionFile"] = Path.GetFileName(path);
                 string json = o.ToString(Formatting.None);
                 args[Prefix + "CompanionJson"] = json.Length <= MaxJsonArg ? json : json.Substring(0, MaxJsonArg);
                 SafeFire(TrigCompanion, args);
@@ -1026,7 +993,8 @@ public class CPHInline
             using (var sr = new StreamReader(fs, Encoding.UTF8, true))
                 raw = sr.ReadToEnd();
             if (string.IsNullOrEmpty(raw) || raw.Trim().Length == 0) return null;
-            var settings = new JsonSerializerSettings { DateParseHandling = DateParseHandling.None };
+            var settings = new JsonSerializerSettings();
+            settings.DateParseHandling = DateParseHandling.None;
             return JsonConvert.DeserializeObject<JObject>(raw, settings);
         }
         catch
@@ -1042,7 +1010,8 @@ public class CPHInline
         bool namesDirty;
         lock (_stateLock)
         {
-            snapshot = _pending.ToList();
+            snapshot = new List<KeyValuePair<string, object>>(_pending.Count);
+            foreach (var kv in _pending) snapshot.Add(kv);
             namesDirty = _namesDirty;
             _namesDirty = false;
         }
@@ -1074,7 +1043,7 @@ public class CPHInline
         LoadRegistry(Prefix + "RuntimeVarNamesJson", _allNames);
     }
 
-    private void LoadRegistry(string variable, HashSet<string> target)
+    private void LoadRegistry(string variable, Dictionary<string, bool> target)
     {
         string json = null;
         try { json = CPH.GetGlobalVar<string>(variable, true); }
@@ -1085,14 +1054,16 @@ public class CPHInline
             var values = JsonConvert.DeserializeObject<List<string>>(json);
             if (values == null) return;
             foreach (string v in values)
-                if (!string.IsNullOrEmpty(v)) target.Add(v);
+                if (!string.IsNullOrEmpty(v)) target[v] = true;
         }
         catch (JsonException) { }
     }
 
-    private void PersistRegistry(string variable, IEnumerable<string> values)
+    private void PersistRegistry(string variable, Dictionary<string, bool> values)
     {
-        string json = JsonConvert.SerializeObject(values.OrderBy(v => v, StringComparer.Ordinal));
+        var list = new List<string>(values.Keys);
+        list.Sort(StringComparer.Ordinal);
+        string json = JsonConvert.SerializeObject(list);
         try { CPH.SetGlobalVar(variable, json, true); }
         catch (Exception ex) { CPH.LogDebug("[ED] registry save " + variable + ": " + ex.Message); }
     }
@@ -1110,7 +1081,11 @@ public class CPHInline
             return;
         }
         _pending[key] = value;
-        if (_allNames.Add(key)) _namesDirty = true;
+        if (!_allNames.ContainsKey(key))
+        {
+            _allNames[key] = true;
+            _namesDirty = true;
+        }
     }
 
     private void UnsetVar(string key)
