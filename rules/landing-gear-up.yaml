@@ -1,0 +1,11 @@
+# Fires the moment the landing gear retracts (Status.json flag transition).
+# The Streamer.bot action can either hardcode the keypress, or read %key%.
+# There is a matching Status.LandingGearDown trigger for the other direction.
+name: Landing Gear Up
+enabled: true
+trigger: Status.LandingGearUp
+action: ED Landing Gear Up
+args:
+  key: "L"
+  gear: "up"
+  system: "{{session.currentSystem}}"

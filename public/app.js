@@ -602,8 +602,10 @@
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
     if (!overlay.classList.contains('hidden')) closeBuilder();
-    const settings = document.getElementById('settings-overlay');
-    if (settings && !settings.classList.contains('hidden')) settings.classList.add('hidden');
+    for (const id of ['settings-overlay', 'globals-overlay']) {
+      const el = document.getElementById(id);
+      if (el && !el.classList.contains('hidden')) el.classList.add('hidden');
+    }
   });
   $('#b-add-cond').addEventListener('click', () => {
     addConditionRow();
@@ -664,6 +666,155 @@
       .then((c) => (catalog = c))
       .catch(console.error);
   }
+
+  // ---- Streamer.bot global variable sync --------------------------------
+  const globalsOverlay = $('#globals-overlay');
+  let globalsInfo = null;
+  let prevVarValues = new Map();
+
+  async function loadGlobals() {
+    try {
+      globalsInfo = await api('/api/globals');
+      renderGlobals();
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  function setGlobalsState(kind, text) {
+    const el = $('#globals-state');
+    el.className = `globals-state ${kind}`;
+    el.innerHTML = `<span class="dot"></span> ${esc(text)}`;
+  }
+
+  function renderGlobals() {
+    const g = globalsInfo;
+    if (!g) return;
+    const toggle = $('#globals-toggle');
+    toggle.classList.toggle('on', g.enabled);
+    toggle.setAttribute('aria-checked', String(g.enabled));
+
+    if (!g.enabled) {
+      setGlobalsState('', 'Off — flip the switch, then click Setup…');
+    } else if (!g.sbConnected) {
+      setGlobalsState('err', 'Waiting for Streamer.bot connection…');
+    } else if (!g.actionExists) {
+      setGlobalsState('warn', `Action "${g.action}" not found in Streamer.bot — click Setup…`);
+    } else if (g.lastPushAt) {
+      setGlobalsState('ok', `Active — pushed ${g.lastPushCount} value(s) at ${fmtTime(new Date(g.lastPushAt).toISOString())}`);
+    } else {
+      setGlobalsState('ok', 'Ready — publishing on the next change');
+    }
+
+    const vars = $('#globals-vars');
+    vars.innerHTML = (g.variables || [])
+      .map((v) => {
+        const val = String(v.value);
+        const changed = prevVarValues.has(v.name) && prevVarValues.get(v.name) !== val;
+        return `<div class="gvar"><span class="gname">${esc(v.name)}</span><span class="gval${changed ? ' changed' : ''}" title="${esc(val)}">${esc(val)}</span></div>`;
+      })
+      .join('');
+    prevVarValues = new Map((g.variables || []).map((v) => [v.name, String(v.value)]));
+  }
+
+  const globalsToggle = $('#globals-toggle');
+  const doGlobalsToggle = async () => {
+    if (!globalsInfo) return;
+    try {
+      await api('/api/globals', { method: 'POST', body: JSON.stringify({ enabled: !globalsInfo.enabled }) });
+      await loadGlobals();
+      if (globalsInfo.enabled && !globalsInfo.actionExists) openGlobalsSetup();
+    } catch (err) {
+      alertErr(err);
+    }
+  };
+  globalsToggle.addEventListener('click', doGlobalsToggle);
+  globalsToggle.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      doGlobalsToggle();
+    }
+  });
+
+  $('#globals-publish').addEventListener('click', async () => {
+    try {
+      await api('/api/globals/publish', { method: 'POST' });
+      setGlobalsState('ok', 'Full publish sent — check Streamer.bot → Global Variables');
+      setTimeout(loadGlobals, 1500);
+    } catch (err) {
+      setGlobalsState('err', err.message || String(err));
+    }
+  });
+
+  $('#globals-verify').addEventListener('click', async () => {
+    setGlobalsState('', 'Verifying…');
+    try {
+      const r = await api('/api/globals/verify');
+      if (r.count > 0) {
+        setGlobalsState('ok', `Verified — ${r.count} "${globalsInfo?.prefix ?? 'ed'}*" variable(s) exist in Streamer.bot`);
+      } else {
+        setGlobalsState('warn', 'No variables found in Streamer.bot yet — run Setup, then "Publish now"');
+      }
+    } catch (err) {
+      setGlobalsState('err', err.message || String(err));
+    }
+  });
+
+  function openGlobalsSetup() {
+    const g = globalsInfo;
+    if (!g) return;
+    $('#g-action').value = g.action;
+    $('#g-prefix').value = g.prefix;
+    $('#g-action-echo').textContent = g.action;
+    $('#g-csharp').textContent = g.csharp;
+    $('#g-copy-state').textContent = '';
+    $('#g-error').classList.add('hidden');
+    globalsOverlay.classList.remove('hidden');
+  }
+
+  $('#globals-setup').addEventListener('click', () => {
+    if (globalsInfo) openGlobalsSetup();
+    else loadGlobals().then(openGlobalsSetup);
+  });
+  $('#globals-close').addEventListener('click', () => globalsOverlay.classList.add('hidden'));
+  $('#globals-cancel').addEventListener('click', () => globalsOverlay.classList.add('hidden'));
+  globalsOverlay.addEventListener('click', (e) => {
+    if (e.target === globalsOverlay) globalsOverlay.classList.add('hidden');
+  });
+  $('#g-action').addEventListener('input', () => {
+    $('#g-action-echo').textContent = $('#g-action').value.trim() || 'ED Set Globals';
+  });
+
+  $('#g-copy').addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText($('#g-csharp').textContent);
+      $('#g-copy-state').textContent = 'Copied ✓';
+    } catch {
+      // Clipboard API can be blocked — select the text so Ctrl+C works.
+      const range = document.createRange();
+      range.selectNodeContents($('#g-csharp'));
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      $('#g-copy-state').textContent = 'Press Ctrl+C to copy the selected code';
+    }
+  });
+
+  $('#globals-save').addEventListener('click', async () => {
+    const err = $('#g-error');
+    err.classList.add('hidden');
+    try {
+      await api('/api/globals', {
+        method: 'POST',
+        body: JSON.stringify({ action: $('#g-action').value, prefix: $('#g-prefix').value }),
+      });
+      await loadGlobals();
+      globalsOverlay.classList.add('hidden');
+    } catch (e) {
+      err.textContent = `⚠ ${e.message || e}`;
+      err.classList.remove('hidden');
+    }
+  });
 
   // ---- settings ----------------------------------------------------------
   const settingsOverlay = $('#settings-overlay');
@@ -764,5 +915,7 @@
     .then((list) => list.slice(-MAX_DISPATCHES).forEach(addDispatch))
     .catch(console.error);
   initSimulator().catch(console.error);
+  loadGlobals();
+  setInterval(loadGlobals, 10000); // keep the variable preview + push status fresh
   connect();
 })();

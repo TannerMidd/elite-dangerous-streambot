@@ -89,6 +89,16 @@ export const SAMPLE_EVENTS: Record<string, () => JournalEvent> = {
   'Status.Overheating': () => stamp({ event: 'Status.Overheating', Flags: 1 << 20 }),
   'Status.InDanger': () => stamp({ event: 'Status.InDanger', Flags: 1 << 22 }),
   'Status.ShieldsDown': () => stamp({ event: 'Status.ShieldsDown', Flags: 0 }),
+  // Ship-state transitions (both edges, so keybind-style rules can be tested)
+  'Status.LandingGearDown': () => stamp({ event: 'Status.LandingGearDown', Flags: 1 << 2 }),
+  'Status.LandingGearUp': () => stamp({ event: 'Status.LandingGearUp', Flags: 0 }),
+  'Status.HardpointsDeployed': () => stamp({ event: 'Status.HardpointsDeployed', Flags: 1 << 6 }),
+  'Status.HardpointsRetracted': () => stamp({ event: 'Status.HardpointsRetracted', Flags: 0 }),
+  'Status.SupercruiseEntered': () => stamp({ event: 'Status.SupercruiseEntered', Flags: 1 << 4 }),
+  'Status.SupercruiseExited': () => stamp({ event: 'Status.SupercruiseExited', Flags: 0 }),
+  'Status.Landed': () => stamp({ event: 'Status.Landed', Flags: 1 << 1 }),
+  'Status.Liftoff': () => stamp({ event: 'Status.Liftoff', Flags: 0 }),
+  'Status.ScoopingFuel': () => stamp({ event: 'Status.ScoopingFuel', Flags: 1 << 11 }),
   HullDamage: () => stamp({ event: 'HullDamage', Health: 0.42, PlayerPilot: true, Fighter: false }),
 };
 

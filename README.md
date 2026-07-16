@@ -29,6 +29,7 @@ Elite Dangerous  ─►  Elite Streambot  ─►  Streamer.bot  ─►  sounds �
 - **Sandboxed conditions** — rule files are safe to share; full JavaScript only via explicit opt-in.
 - **Live session stats** for stateful alerts, like *every 10th jump* or *death #N this stream*.
 - **Resilient Streamer.bot link** — auto-reconnect, an offline alert queue, and visible dispatch errors.
+- **Global variable sync** — publishes live session and ship state (`%edSystem%`, `%edJumps%`, `%edLandingGearDown%`, …) into Streamer.bot's Global Variables for your own actions and commands to read.
 - **Test without the game** — a built-in event simulator and per-rule test-fire.
 - **Batteries included** — 10 preset rules and matching alert sounds.
 

@@ -37,6 +37,8 @@ export class StreamerbotClient extends EventEmitter {
   private outbox: QueuedMessage[] = [];
   /** DoAction request ids awaiting a response, so rejections can be surfaced. */
   private pending = new Map<string, string>();
+  /** GetGlobals request ids awaiting a response. */
+  private globalsWaiters = new Map<string, (vars: Array<{ name: string; value: unknown }>) => void>();
   private reconnectDelay = 1000;
   private reconnectTimer: NodeJS.Timeout | null = null;
   private stopped = false;
@@ -99,6 +101,21 @@ export class StreamerbotClient extends EventEmitter {
             this.emit('requestError', { id: msg.id, error });
           }
         }
+        if (msg?.id && this.globalsWaiters.has(msg.id)) {
+          const resolve = this.globalsWaiters.get(msg.id)!;
+          this.globalsWaiters.delete(msg.id);
+          // Streamer.bot returns globals as an object map or an array depending on version.
+          const raw = msg.variables ?? msg.globals ?? {};
+          const vars = Array.isArray(raw)
+            ? raw.map((v: Record<string, unknown>) => ({ name: String(v.name ?? ''), value: v.value }))
+            : Object.entries(raw as Record<string, unknown>).map(([name, v]) => ({
+                name,
+                value: v && typeof v === 'object' && 'value' in (v as object)
+                  ? (v as { value: unknown }).value
+                  : v,
+              }));
+          resolve(vars);
+        }
         if (msg?.info && typeof msg.info === 'object' && msg.info.version) {
           this.sbVersion = String(msg.info.version);
           console.log(`[streamerbot] Streamer.bot v${this.sbVersion}`);
@@ -150,6 +167,30 @@ export class StreamerbotClient extends EventEmitter {
 
   requestActions(): void {
     this.sendRaw({ request: 'GetActions', id: randomUUID() });
+  }
+
+  /**
+   * Read persisted globals back from Streamer.bot (GetGlobals is supported;
+   * writing is not — see globals.ts). Used to verify the bootstrap works.
+   */
+  getGlobals(timeoutMs = 3000): Promise<Array<{ name: string; value: unknown }>> {
+    return new Promise((resolve, reject) => {
+      if (!this.connected) return reject(new Error('Not connected to Streamer.bot'));
+      const id = randomUUID();
+      const timer = setTimeout(() => {
+        this.globalsWaiters.delete(id);
+        reject(new Error('Streamer.bot did not respond to GetGlobals'));
+      }, timeoutMs);
+      this.globalsWaiters.set(id, (vars) => {
+        clearTimeout(timer);
+        resolve(vars);
+      });
+      if (!this.sendRaw({ request: 'GetGlobals', id, persisted: true })) {
+        clearTimeout(timer);
+        this.globalsWaiters.delete(id);
+        reject(new Error('Failed to send GetGlobals'));
+      }
+    });
   }
 
   private trackPending(id: string, actionName: string): void {

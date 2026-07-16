@@ -9,7 +9,7 @@
     "dev": "tsx src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "test": "tsx --test tests/safe-eval.test.ts tests/template.test.ts tests/session.test.ts tests/engine.test.ts",
+    "test": "tsx --test tests/safe-eval.test.ts tests/template.test.ts tests/session.test.ts tests/engine.test.ts tests/globals.test.ts",
     "package": "node scripts/package.mjs",
     "fake-journal": "tsx tools/fake-journal.ts",
     "gen-sounds": "node tools/gen-sounds.mjs"

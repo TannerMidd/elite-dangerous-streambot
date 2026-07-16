@@ -8,6 +8,7 @@ import type { JournalWatcher } from '../journal/watcher.js';
 import type { SessionState } from '../state/session.js';
 import type { RuleEngine } from '../rules/engine.js';
 import type { StreamerbotClient } from '../dispatch/streamerbot.js';
+import { CSHARP_BOOTSTRAP, buildGlobals, type GlobalsPublisher } from '../dispatch/globals.js';
 import { DEFAULT_TITLE, defaultJournalDir, readRawConfig, writeRawConfig, type AppConfig } from '../config.js';
 import type { DispatchRecord, LoadedRule } from '../types.js';
 import { makeSampleEvent, sampleEventNames, sampleForTrigger } from '../simulator/events.js';
@@ -22,12 +23,15 @@ export interface ServerDeps {
   session: SessionState;
   engine: RuleEngine;
   streamerbot: StreamerbotClient;
+  globals: GlobalsPublisher;
   /** Recent dispatches, newest last. */
   dispatchLog: DispatchRecord[];
   /** Test-fire path used by the API; shares dispatch logic with the live pipeline. */
   fireRule: (rule: LoadedRule, args: Record<string, string>) => DispatchRecord;
   /** Gracefully stop the whole app (invoked by the dashboard Quit button). */
   onQuit: () => void;
+  /** Force a globals publish (used after settings change / Publish now). */
+  publishGlobals: () => void;
 }
 
 function ruleView(rule: LoadedRule) {
@@ -101,6 +105,69 @@ export function startServer(deps: ServerDeps): RunningServer {
     console.log('[ui] Quit requested from the dashboard.');
     broadcast({ type: 'quitting' });
     setTimeout(() => deps.onQuit(), 200);
+  });
+
+  // ---- global variables --------------------------------------------------
+
+  /** Current state of the globals feature + a live preview of the variables. */
+  app.get('/api/globals', (_req, res) => {
+    const opts = deps.globals.options;
+    const preview = buildGlobals(session.getStats(), watcher.status, null, opts.prefix);
+    res.json({
+      ...opts,
+      csharp: CSHARP_BOOTSTRAP,
+      lastPushAt: deps.globals.lastPushAt,
+      lastPushCount: deps.globals.lastPushCount,
+      /** True once an action with the bootstrap name exists in Streamer.bot. */
+      actionExists: streamerbot.actions.some((a) => a.name === opts.action),
+      sbConnected: streamerbot.connected,
+      variables: Object.entries(preview).map(([name, value]) => ({ name, value })),
+    });
+  });
+
+  app.post('/api/globals', (req, res) => {
+    const b = req.body ?? {};
+    const opts = { ...deps.globals.options };
+    if ('enabled' in b) opts.enabled = b.enabled === true;
+    if (b.action !== undefined) opts.action = String(b.action).trim() || opts.action;
+    if (b.prefix !== undefined) opts.prefix = String(b.prefix).trim().replace(/[^A-Za-z0-9_]/g, '');
+
+    deps.globals.setOptions(opts);
+    config.globals = opts;
+    const raw = readRawConfig(deps.root);
+    raw.globals = opts;
+    writeRawConfig(deps.root, raw);
+
+    if (opts.enabled) deps.publishGlobals();
+    res.json({ ok: true, ...opts });
+  });
+
+  /** Force an immediate full resend (used by the "Publish now" button). */
+  app.post('/api/globals/publish', (_req, res) => {
+    if (!deps.globals.options.enabled) {
+      return res.status(400).json({ error: 'Global variable sync is turned off' });
+    }
+    if (!streamerbot.connected) {
+      return res.status(400).json({ error: 'Streamer.bot is not connected' });
+    }
+    deps.globals.reset(); // resend everything, not just what changed
+    deps.publishGlobals();
+    res.json({ ok: true });
+  });
+
+  /** Read the globals back out of Streamer.bot to prove the bootstrap works. */
+  app.get('/api/globals/verify', async (_req, res) => {
+    if (!streamerbot.connected) {
+      return res.status(400).json({ error: 'Streamer.bot is not connected' });
+    }
+    try {
+      const globals = await streamerbot.getGlobals();
+      const prefix = deps.globals.options.prefix;
+      const ours = globals.filter((g) => g.name.startsWith(prefix));
+      res.json({ ok: true, count: ours.length, variables: ours });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
   });
 
   // ---- settings ---------------------------------------------------------

@@ -22,14 +22,30 @@ export const STATUS_FLAGS = {
   BeingInterdicted: 1 << 23,
 } as const;
 
-/** Synthetic events emitted on flag transitions: name -> [bit, fireOnRisingEdge]. */
+/**
+ * Synthetic events emitted when a Status.json flag flips. Each entry fires on
+ * one edge of one bit, so both directions of a state (gear down / gear up) are
+ * separate triggers a rule can bind to.
+ */
 const FLAG_TRANSITIONS: Array<{ name: string; bit: number; rising: boolean }> = [
+  // Hazards
   { name: 'Status.LowFuel', bit: STATUS_FLAGS.LowFuel, rising: true },
   { name: 'Status.Overheating', bit: STATUS_FLAGS.Overheating, rising: true },
   { name: 'Status.InDanger', bit: STATUS_FLAGS.InDanger, rising: true },
   { name: 'Status.BeingInterdicted', bit: STATUS_FLAGS.BeingInterdicted, rising: true },
   { name: 'Status.ShieldsDown', bit: STATUS_FLAGS.ShieldsUp, rising: false },
   { name: 'Status.ShieldsRestored', bit: STATUS_FLAGS.ShieldsUp, rising: true },
+  // Ship state — useful for driving keybinds/overlays from what the ship is doing
+  { name: 'Status.LandingGearDown', bit: STATUS_FLAGS.LandingGearDown, rising: true },
+  { name: 'Status.LandingGearUp', bit: STATUS_FLAGS.LandingGearDown, rising: false },
+  { name: 'Status.HardpointsDeployed', bit: STATUS_FLAGS.HardpointsDeployed, rising: true },
+  { name: 'Status.HardpointsRetracted', bit: STATUS_FLAGS.HardpointsDeployed, rising: false },
+  { name: 'Status.SupercruiseEntered', bit: STATUS_FLAGS.Supercruise, rising: true },
+  { name: 'Status.SupercruiseExited', bit: STATUS_FLAGS.Supercruise, rising: false },
+  { name: 'Status.Landed', bit: STATUS_FLAGS.Landed, rising: true },
+  { name: 'Status.Liftoff', bit: STATUS_FLAGS.Landed, rising: false },
+  { name: 'Status.ScoopingFuel', bit: STATUS_FLAGS.ScoopingFuel, rising: true },
+  { name: 'Status.ScoopingFuelStopped', bit: STATUS_FLAGS.ScoopingFuel, rising: false },
 ];
 
 /**

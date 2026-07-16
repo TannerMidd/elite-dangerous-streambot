@@ -171,6 +171,7 @@
       <div class="navgroup">Using the app</div>
       <a href="#dashboard">Dashboard tour</a>
       <a href="#builder">Creating rules</a>
+      <a href="#globals">Global variables</a>
       <a href="#reference">Rule reference</a>
       <a href="#presets">Preset rules</a>
       <div class="navgroup">Help</div>
@@ -306,6 +307,40 @@
       <div class="callout tip">
         <span class="label">"Why isn't my rule firing?"</span>
         <p>Check its counters. <code>seen 0×</code> means the trigger event name never arrived — check the spelling against the Live Events feed. <code>seen 12× · fired 0×</code> means the event <em>is</em> arriving but your condition is filtering it all out.</p>
+      </div>
+    </section>
+
+    <section id="globals">
+      <h2>Global variables</h2>
+      <p>Beyond firing alerts, Elite Streambot can publish your live Elite state <em>into Streamer.bot itself</em> as
+      <strong>global variables</strong> — visible in Streamer.bot under <strong>(x) Global Variables → Persisted Globals</strong>,
+      updating automatically as you play. Any action, command, or overlay you build in Streamer.bot can then read them,
+      with Elite Streambot completely out of the loop.</p>
+      <table>
+        <tr><th>Examples</th><th>Holds</th></tr>
+        <tr><td><code>%edSystem%</code> / <code>%edStation%</code></td><td>where you are right now</td></tr>
+        <tr><td><code>%edJumps%</code> · <code>%edCreditsEarned%</code> · <code>%edBounties%</code> · <code>%edDeaths%</code></td><td>running session totals</td></tr>
+        <tr><td><code>%edLandingGearDown%</code> · <code>%edHardpointsDeployed%</code> · <code>%edSupercruise%</code> · <code>%edShieldsUp%</code></td><td>live ship state (true/false)</td></tr>
+        <tr><td><code>%edLastEvent%</code></td><td>name of the most recent journal event</td></tr>
+      </table>
+      <p>That enables things like a <code>!system</code> chat command that answers with your current system, an OBS text
+      source showing session credits, or actions that check ship state — all built entirely in Streamer.bot.</p>
+
+      <h3>One-time setup</h3>
+      <p>Streamer.bot has no API for writing globals from outside, so a tiny helper action inside Streamer.bot does the
+      writing. You create it once; after that every variable (including ones added in future app updates) appears automatically.</p>
+      <ol class="steps">
+        <li>In the dashboard's <strong>Streamer.bot Variables</strong> panel, flip the toggle on and click <strong>Setup…</strong>.</li>
+        <li>Follow the five steps shown: create an action named <code>ED Set Globals</code>, add a
+          <strong>Core → C# → Execute C# Code</strong> sub-action, paste the code from the <strong>Copy C# code</strong> button,
+          hit <strong>Compile</strong>, then Save.</li>
+        <li>Back in the dashboard, click <strong>Verify</strong> — it reads the variables back out of Streamer.bot and
+          confirms the sync is live.</li>
+      </ol>
+      <div class="callout tip">
+        <span class="label">How it stays efficient</span>
+        <p>Only <em>changed</em> values are sent, batched roughly once a second — a busy session doesn't flood Streamer.bot,
+        and a full refresh is one click (<strong>Publish now</strong>) or automatic on reconnect.</p>
       </div>
     </section>
 

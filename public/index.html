@@ -50,6 +50,22 @@
         </div>
       </section>
       <section class="panel">
+        <div class="panel-header">
+          <h2>Streamer.bot Variables</h2>
+          <div class="toggle" id="globals-toggle" role="switch" tabindex="0" aria-checked="false"
+               aria-label="Enable global variable sync" title="Publish Elite data as Streamer.bot globals"></div>
+        </div>
+        <p class="hint">Publishes your Elite session and ship state into Streamer.bot's
+          <b>Global Variables</b>, updating live. Any action can then read them.</p>
+        <div id="globals-state" class="globals-state"></div>
+        <div class="cond-actions">
+          <button id="globals-setup" class="btn btn-sm">Setup…</button>
+          <button id="globals-publish" class="btn btn-sm">Publish now</button>
+          <button id="globals-verify" class="btn btn-sm">Verify</button>
+        </div>
+        <div id="globals-vars" class="globals-vars"></div>
+      </section>
+      <section class="panel">
         <h2>Dispatches</h2>
         <div id="dispatch-list" class="dispatch-list"></div>
       </section>
@@ -149,6 +165,62 @@
         <span style="flex:1"></span>
         <button id="builder-cancel" class="btn">Cancel</button>
         <button id="builder-save" class="btn btn-accent">Save rule</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Global variables setup modal -->
+  <div id="globals-overlay" class="overlay hidden">
+    <div class="modal">
+      <div class="modal-head">
+        <h2>Streamer.bot Variable Sync — Setup</h2>
+        <button id="globals-close" class="btn btn-ghost">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="hint" style="font-size:13px">
+          Streamer.bot has no API for writing global variables, so a tiny helper action inside
+          Streamer.bot does the writing. You set it up <b>once</b>; after that, every variable —
+          including ones added in future updates — appears and updates automatically.
+        </p>
+
+        <div class="field field-row">
+          <div style="flex:1">
+            <label>Helper action name</label>
+            <input id="g-action" type="text" placeholder="ED Set Globals">
+          </div>
+          <div>
+            <label>Variable prefix</label>
+            <input id="g-prefix" type="text" placeholder="ed" style="width:100px">
+          </div>
+        </div>
+
+        <div class="field">
+          <label>One-time setup in Streamer.bot</label>
+          <ol class="setup-steps">
+            <li><b>Actions</b> tab → right-click the list → <b>Add</b> → name it exactly
+              <code id="g-action-echo">ED Set Globals</code> → OK.</li>
+            <li>Select it, then in <b>Sub-Actions</b>: right-click → <b>Core → C# → Execute C# Code</b>.</li>
+            <li>Click <b>Copy C# code</b> below and paste it into the editor, replacing everything there.</li>
+            <li>Click <b>Compile</b> (should report OK), then <b>Save</b>.</li>
+            <li>Come back here and click <b>Verify</b>.</li>
+          </ol>
+        </div>
+
+        <div class="field">
+          <div class="cond-actions" style="margin-bottom:6px">
+            <button id="g-copy" class="btn btn-accent btn-sm">📋 Copy C# code</button>
+            <span id="g-copy-state" class="lbl-hint"></span>
+          </div>
+          <pre id="g-csharp" class="yaml-box" style="max-height:180px; overflow-y:auto"></pre>
+        </div>
+
+        <div id="g-error" class="rule-err hidden"></div>
+      </div>
+      <div class="modal-foot">
+        <span class="lbl-hint">Saved to config.json — applies immediately.</span>
+        <span style="flex:1"></span>
+        <button id="globals-cancel" class="btn">Close</button>
+        <button id="globals-save" class="btn btn-accent">Save settings</button>
       </div>
     </div>
   </div>

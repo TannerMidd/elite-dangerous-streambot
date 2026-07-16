@@ -344,6 +344,29 @@ select.sm {
 .btn-quit { border-color: #5a2a2a; color: var(--bad); }
 .btn-quit:hover { background: #3a1d1d; border-color: var(--bad); }
 
+/* Streamer.bot globals panel */
+.globals-state {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 12px; margin-bottom: 8px; color: var(--muted);
+}
+.globals-state .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
+.globals-state.ok { color: var(--text); }
+.globals-state.ok .dot { background: var(--good); box-shadow: 0 0 6px var(--good); }
+.globals-state.warn .dot { background: var(--warn); }
+.globals-state.err .dot { background: var(--bad); }
+.globals-vars {
+  margin-top: 8px; max-height: 210px; overflow-y: auto;
+  font-family: var(--mono); font-size: 11px;
+  border-top: 1px solid var(--border); padding-top: 6px;
+}
+.gvar { display: flex; justify-content: space-between; gap: 10px; padding: 2px 2px; }
+.gvar .gname { color: var(--accent-dim); white-space: nowrap; }
+.gvar .gval { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gvar .gval.changed { color: var(--good); }
+
+.setup-steps { margin: 0 0 4px 20px; font-size: 13px; }
+.setup-steps li { margin-bottom: 6px; }
+
 /* Stopped overlay (after Quit) */
 .stopped-card {
   background: var(--panel);

@@ -23,6 +23,14 @@ export interface AppConfig {
     port: number;
     endpoint: string;
   };
+  /** Publish Elite state into Streamer.bot as global variables. */
+  globals: {
+    enabled: boolean;
+    /** Streamer.bot action holding the C# bootstrap that sets the globals. */
+    action: string;
+    /** Prefix for every published variable name. */
+    prefix: string;
+  };
   /** Directory containing rule files (.yaml/.yml/.json). */
   rulesDir: string;
 }
@@ -33,6 +41,7 @@ const DEFAULTS: AppConfig = {
   uiPort: 8377,
   uiHost: '127.0.0.1',
   streamerbot: { host: '127.0.0.1', port: 8080, endpoint: '/' },
+  globals: { enabled: false, action: 'ED Set Globals', prefix: 'ed' },
   rulesDir: 'rules',
 };
 
@@ -70,6 +79,7 @@ export function loadConfig(root: string): AppConfig {
     ...DEFAULTS,
     ...overrides,
     streamerbot: { ...DEFAULTS.streamerbot, ...(overrides.streamerbot ?? {}) },
+    globals: { ...DEFAULTS.globals, ...(overrides.globals ?? {}) },
   };
   if (!config.journalDir) config.journalDir = defaultJournalDir();
   if (!path.isAbsolute(config.rulesDir)) config.rulesDir = path.join(root, config.rulesDir);

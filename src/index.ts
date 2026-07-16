@@ -5,6 +5,7 @@ import { JournalWatcher } from './journal/watcher.js';
 import { SessionState } from './state/session.js';
 import { RuleEngine } from './rules/engine.js';
 import { StreamerbotClient } from './dispatch/streamerbot.js';
+import { GlobalsPublisher, buildGlobals } from './dispatch/globals.js';
 import { startServer } from './server/index.js';
 import type { DispatchRecord, LoadedRule, PipelineEvent } from './types.js';
 
@@ -32,7 +33,14 @@ async function main(): Promise<void> {
   const session = new SessionState();
   const engine = new RuleEngine(config.rulesDir);
   const streamerbot = new StreamerbotClient(config.streamerbot);
+  const globals = new GlobalsPublisher(streamerbot, config.globals);
   const dispatchLog: DispatchRecord[] = [];
+  let lastEventName: string | null = null;
+
+  const publishGlobals = () =>
+    globals.schedule(() =>
+      buildGlobals(session.getStats(), watcher.status, lastEventName, globals.options.prefix),
+    );
 
   const fireRule = (rule: LoadedRule, args: Record<string, string>): DispatchRecord => {
     const { status, id } = streamerbot.doAction(rule.action, args);
@@ -57,23 +65,38 @@ async function main(): Promise<void> {
   // defined below (it needs `server`, which startServer returns).
   let quit: () => Promise<void> = async () => process.exit(0);
   const { server, broadcastDispatch } = startServer({
-    root: ROOT, config, watcher, session, engine, streamerbot, dispatchLog, fireRule,
+    root: ROOT, config, watcher, session, engine, streamerbot, globals, dispatchLog, fireRule,
     onQuit: () => void quit(),
+    publishGlobals: () => publishGlobals(),
   });
 
   watcher.on('event', (pe: PipelineEvent) => {
     // Order matters: state first, so rules see up-to-date session stats
     // (e.g. a jump-milestone rule sees the jump it was triggered by).
     session.handle(pe);
+    if (!pe.replay) lastEventName = pe.event.event;
     const matches = engine.evaluate(pe, watcher.status, session.getStats());
     for (const match of matches) {
       const record = fireRule(match.rule, match.args);
       broadcastDispatch?.(record);
     }
+    // Replayed events rebuild state; publishing each one would spam Streamer.bot.
+    if (!pe.replay) publishGlobals();
   });
 
-  watcher.on('status', (status) => session.updateStatus(status));
-  watcher.on('reset', () => session.reset());
+  watcher.on('status', (status) => {
+    session.updateStatus(status);
+    publishGlobals(); // ship-state flags (landing gear, hardpoints, …) live here
+  });
+  watcher.on('reset', () => {
+    session.reset();
+    globals.reset();
+  });
+  // On (re)connect, resend everything — Streamer.bot may have restarted.
+  streamerbot.on('connected', () => {
+    globals.reset();
+    publishGlobals();
+  });
 
   // Surface Streamer.bot rejections (usually a missing action name) on the
   // matching dispatch record so the dashboard shows why nothing played.
