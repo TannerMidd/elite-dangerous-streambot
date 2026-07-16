@@ -342,6 +342,13 @@
         <p>Only <em>changed</em> values are sent, batched roughly once a second — a busy session doesn't flood Streamer.bot,
         and a full refresh is one click (<strong>Publish now</strong>) or automatic on reconnect.</p>
       </div>
+      <div class="callout">
+        <span class="label">Standalone alternative — no app needed</span>
+        <p>Prefer everything inside Streamer.bot? <a href="https://github.com/TannerMidd/elite-dangerous-streambot/blob/main/extras/ed-journal-watcher.cs">
+        <code>extras/ed-journal-watcher.cs</code></a> is a single C# action that reads the journal itself on a background
+        thread and publishes the same variables — paste it once, add the <em>Streamer.bot Started</em> trigger, done.
+        Use it <em>or</em> the app's sync, not both.</p>
+      </div>
     </section>
 
     <section id="reference">
