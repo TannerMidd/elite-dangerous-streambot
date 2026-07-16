@@ -181,7 +181,6 @@ public class CPHInline
         foreach (string name in names) UnsetVar(name);
         _allNames.Clear();
         _eventTypes.Clear();
-        _flagTriggers.Clear();
         _typeFields.Clear();
         _pending.Clear();
         _pushed.Clear();
@@ -254,7 +253,6 @@ public class CPHInline
     private readonly Dictionary<string, long> _eventCounts = new Dictionary<string, long>(StringComparer.Ordinal);
     private readonly Dictionary<string, Dictionary<string, bool>> _typeFields = new Dictionary<string, Dictionary<string, bool>>(StringComparer.Ordinal);
     private readonly Dictionary<string, bool> _eventTypes = new Dictionary<string, bool>(StringComparer.Ordinal);
-    private readonly Dictionary<string, bool> _flagTriggers = new Dictionary<string, bool>(StringComparer.Ordinal);
     private long _lastFlags = -1, _lastFlags2 = -1;
 
     // companion files
@@ -274,23 +272,24 @@ public class CPHInline
         {
             CPH.LogWarn("[ED] Trigger registration failed: " + ex.Message);
         }
+
+        // Every ship-state edge is registered up front so all of them are
+        // bindable in the trigger menu immediately — you should not have to
+        // toggle your landing gear once before "LandingGearDown Off" exists.
+        for (int i = 0; i < FlagNames.Length; i++) RegisterFlagEdges(FlagNames[i]);
+        for (int i = 0; i < Flags2Names.Length; i++) RegisterFlagEdges(Flags2Names[i]);
+    }
+
+    private void RegisterFlagEdges(string flag)
+    {
+        SafeRegister(flag + " On", TrigFlagPrefix + flag + ".on", new[] { "Elite Dangerous", "Ship State" });
+        SafeRegister(flag + " Off", TrigFlagPrefix + flag + ".off", new[] { "Elite Dangerous", "Ship State" });
     }
 
     private void ReRegisterDynamicTriggers()
     {
         foreach (string type in _eventTypes.Keys)
             SafeRegister(type, TrigEventPrefix + type, new[] { "Elite Dangerous", "Journal Events" });
-        foreach (string ft in _flagTriggers.Keys)
-        {
-            // stored as "<Flag>|on" / "<Flag>|off"
-            int sep = ft.LastIndexOf('|');
-            if (sep <= 0) continue;
-            string flag = ft.Substring(0, sep);
-            string edge = ft.Substring(sep + 1);
-            SafeRegister(flag + (edge == "on" ? " On" : " Off"),
-                TrigFlagPrefix + flag + "." + edge,
-                new[] { "Elite Dangerous", "Ship State" });
-        }
     }
 
     private void SafeRegister(string name, string id, string[] category)
@@ -892,16 +891,6 @@ public class CPHInline
 
             string flag = names[i];
             string edge = now ? "on" : "off";
-            string regKey = flag + "|" + edge;
-            if (!_flagTriggers.ContainsKey(regKey))
-            {
-                _flagTriggers[regKey] = true;
-                SafeRegister(flag + (now ? " On" : " Off"),
-                    TrigFlagPrefix + flag + "." + edge,
-                    new[] { "Elite Dangerous", "Ship State" });
-                PersistRegistry(Prefix + "RuntimeFlagTriggersJson", _flagTriggers);
-            }
-
             var args = new Dictionary<string, object>(StringComparer.Ordinal);
             args[Prefix + "Flag"] = flag;
             args[Prefix + "Value"] = now;
@@ -1039,7 +1028,6 @@ public class CPHInline
     private void LoadRegistries()
     {
         LoadRegistry(Prefix + "RuntimeEventTypesJson", _eventTypes);
-        LoadRegistry(Prefix + "RuntimeFlagTriggersJson", _flagTriggers);
         LoadRegistry(Prefix + "RuntimeVarNamesJson", _allNames);
     }
 
