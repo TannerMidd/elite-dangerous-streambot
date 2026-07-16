@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Elite Dangerous Streamer.bot Action Builder</title>
+<meta name="description" content="Build a Streamer.bot action for the standalone Elite Dangerous C# journal watcher and get exact triggers, variables, conditions, and step-by-step setup instructions.">
+<link rel="stylesheet" href="action-builder.css">
+<script src="action-builder.js" defer></script>
+</head>
+<body>
+
+<div class="topbar">
+  <span class="brand-icon" aria-hidden="true">◆</span>
+  <div>
+    <strong>Elite <span class="accent">Streambot</span></strong>
+    <span class="topbar-page">Action Builder</span>
+  </div>
+</div>
+
+<div class="layout">
+  <aside class="site-sidebar">
+    <div class="brand">
+      <span class="brand-icon" aria-hidden="true">◆</span>
+      <h1>Elite <span class="accent">Streambot</span></h1>
+    </div>
+    <nav aria-label="Page navigation">
+      <a href="index.html">← Main user guide</a>
+      <a href="subactions.html">Variables reference</a>
+      <div class="navgroup">Action builder</div>
+      <a href="#templates">Starter recipes</a>
+      <a href="#trigger">1 · Trigger</a>
+      <a href="#conditions">2 · Conditions</a>
+      <a href="#outcome">3 · Sub-actions</a>
+      <a href="#setup">Generated setup</a>
+      <div class="navgroup">Help</div>
+      <a href="#variable-help">Which variable syntax?</a>
+      <a href="#testing">Testing the action</a>
+    </nav>
+    <div class="sidebar-note">
+      <span class="eyebrow">Built for</span>
+      <strong>Standalone C# watcher</strong>
+      <p>This page generates Streamer.bot setup instructions. It does not use the main Elite Streambot app or its YAML rules.</p>
+    </div>
+  </aside>
+
+  <main>
+    <section class="hero">
+      <div class="hero-copy">
+        <span class="hero-badge">Standalone C# watcher</span>
+        <h2>Build a Streamer.bot action without guessing variable names.</h2>
+        <p>Choose what should happen in Elite Dangerous, add any checks, and choose what Streamer.bot should do. The builder outputs the exact trigger path, If/Else values, variable tokens, action tree, and test steps.</p>
+      </div>
+      <div class="hero-example" aria-label="Current build summary">
+        <span class="eyebrow">Current recipe</span>
+        <p id="recipe-sentence">When Docked happens, check the station name, then play a sound.</p>
+      </div>
+    </section>
+
+    <section id="templates" class="page-section">
+      <div class="section-heading">
+        <div>
+          <span class="eyebrow">Quick start</span>
+          <h2>Start with a recipe</h2>
+          <p>Pick one and replace the example values, or build from scratch below.</p>
+        </div>
+        <button type="button" class="button button-quiet" data-action="reset-builder">Reset builder</button>
+      </div>
+      <div class="preset-grid">
+        <button type="button" class="preset-card is-active" data-preset="docked-station">
+          <span class="preset-kicker">Travel</span>
+          <strong>Docked at a station</strong>
+          <span>When Docked fires, match one station name, then run your alert.</span>
+        </button>
+        <button type="button" class="preset-card" data-preset="jump-tts">
+          <span class="preset-kicker">Travel</span>
+          <strong>Jump arrival TTS</strong>
+          <span>Speak the destination system and live route totals after an FSD jump.</span>
+        </button>
+        <button type="button" class="preset-card" data-preset="low-fuel">
+          <span class="preset-kicker">Ship state</span>
+          <strong>Low-fuel warning</strong>
+          <span>Play a warning the moment the game's LowFuel flag turns on.</span>
+        </button>
+        <button type="button" class="preset-card" data-preset="big-bounty">
+          <span class="preset-kicker">Combat</span>
+          <strong>Big bounty alert</strong>
+          <span>Only post an alert when TotalReward is over your chosen amount.</span>
+        </button>
+        <button type="button" class="preset-card" data-preset="gear-up">
+          <span class="preset-kicker">Ship state</span>
+          <strong>Landing gear retracted</strong>
+          <span>Press a key or run another sub-action when landing gear turns off.</span>
+        </button>
+        <button type="button" class="preset-card" data-preset="station-command">
+          <span class="preset-kicker">Live globals</span>
+          <strong>Command while docked</strong>
+          <span>From a chat command, check Docked and Station using live globals.</span>
+        </button>
+      </div>
+    </section>
+
+    <div class="builder-workspace">
+      <div class="builder-column">
+        <section id="trigger" class="step-card">
+          <div class="step-heading">
+            <span class="step-number">1</span>
+            <div>
+              <h2>What starts the action?</h2>
+              <p>Use a watcher trigger for a game event or state change. Use an ordinary Streamer.bot trigger when you want to inspect the current Elite state on demand.</p>
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="action-name">Action name</label>
+            <input id="action-name" type="text" value="ED Docked at Station" data-field="actionName" autocomplete="off">
+            <span class="field-help">This is the name you will enter in Streamer.bot's Actions pane.</span>
+          </div>
+
+          <fieldset class="choice-fieldset">
+            <legend>Trigger source</legend>
+            <div class="choice-grid trigger-choice-grid">
+              <label class="choice-card">
+                <input type="radio" name="trigger-type" value="journal" data-trigger-type checked>
+                <span class="choice-title">Journal event</span>
+                <span class="choice-copy">Docked, FSDJump, Bounty, MissionCompleted, and 200+ more.</span>
+              </label>
+              <label class="choice-card">
+                <input type="radio" name="trigger-type" value="flag" data-trigger-type>
+                <span class="choice-title">Ship state change</span>
+                <span class="choice-copy">A live ship or on-foot flag turns on or off.</span>
+              </label>
+              <label class="choice-card">
+                <input type="radio" name="trigger-type" value="companion" data-trigger-type>
+                <span class="choice-title">Companion file</span>
+                <span class="choice-copy">Cargo.json, NavRoute.json, Market.json, and similar files update.</span>
+              </label>
+              <label class="choice-card">
+                <input type="radio" name="trigger-type" value="watcher" data-trigger-type>
+                <span class="choice-title">Watcher status</span>
+                <span class="choice-copy">The C# watcher starts, hydrates, switches journals, stops, or errors.</span>
+              </label>
+              <label class="choice-card">
+                <input type="radio" name="trigger-type" value="external" data-trigger-type>
+                <span class="choice-title">Command or other trigger</span>
+                <span class="choice-copy">A Twitch command, hotkey, timer, Stream Deck button, or anything else.</span>
+              </label>
+            </div>
+          </fieldset>
+
+          <div id="trigger-config" class="dynamic-panel"></div>
+        </section>
+
+        <section id="conditions" class="step-card">
+          <div class="step-heading">
+            <span class="step-number">2</span>
+            <div>
+              <h2>What must be true?</h2>
+              <p>Conditions are optional. Every condition you add must pass, so the generated guide nests each If/Else inside the previous True Result.</p>
+            </div>
+          </div>
+
+          <div id="automatic-conditions"></div>
+          <div id="conditions-list" class="stack-list"></div>
+          <button type="button" class="button button-secondary" data-action="add-condition">+ Add condition</button>
+        </section>
+
+        <section id="outcome" class="step-card">
+          <div class="step-heading">
+            <span class="step-number">3</span>
+            <div>
+              <h2>What should Streamer.bot do?</h2>
+              <p>Add one or more sub-actions. Text fields can include any trigger argument or persisted global shown in the generated variable list.</p>
+            </div>
+          </div>
+
+          <div id="outcomes-list" class="stack-list"></div>
+          <button type="button" class="button button-secondary" data-action="add-outcome">+ Add sub-action</button>
+        </section>
+      </div>
+
+      <div class="preview-column">
+        <section class="preview-card" aria-labelledby="preview-title">
+          <div class="preview-heading">
+            <div>
+              <span class="eyebrow">Live preview</span>
+              <h2 id="preview-title">Your action</h2>
+            </div>
+            <span id="build-status" class="status-pill">Ready</span>
+          </div>
+          <p id="preview-summary" class="preview-summary"></p>
+          <div id="action-tree" class="action-tree"></div>
+          <div class="preview-actions">
+            <button type="button" class="button button-primary" data-action="copy-guide">Copy full setup</button>
+            <button type="button" class="button button-secondary" data-action="copy-link">Copy share link</button>
+          </div>
+          <a class="jump-link" href="#setup">See the complete step-by-step setup ↓</a>
+          <p id="copy-status" class="copy-status" role="status" aria-live="polite"></p>
+        </section>
+      </div>
+    </div>
+
+    <section id="setup" class="page-section generated-section">
+      <div class="section-heading">
+        <div>
+          <span class="eyebrow">Generated from your choices</span>
+          <h2>Exact Streamer.bot setup</h2>
+          <p id="setup-intro">Follow these steps in order. Values shown in code styling should be entered exactly as written.</p>
+        </div>
+        <button type="button" class="button button-quiet" data-action="copy-variables">Copy variable list</button>
+      </div>
+
+      <div id="build-notices"></div>
+      <ol id="setup-steps" class="generated-steps"></ol>
+
+      <div class="variables-layout">
+        <div class="variable-panel">
+          <div class="panel-heading">
+            <div>
+              <span class="eyebrow">Required</span>
+              <h3>Variables used by this action</h3>
+            </div>
+          </div>
+          <div id="used-variables"></div>
+        </div>
+        <div class="variable-panel">
+          <div class="panel-heading">
+            <div>
+              <span class="eyebrow">Available</span>
+              <h3>Useful values from this trigger</h3>
+            </div>
+          </div>
+          <div id="available-variables"></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="variable-help" class="page-section explainer-section">
+      <div class="section-heading compact">
+        <div>
+          <span class="eyebrow">Variable syntax</span>
+          <h2>Arguments for the event; globals for live state.</h2>
+        </div>
+      </div>
+      <div class="explainer-grid">
+        <article>
+          <code>%edEvent_StationName%</code>
+          <h3>Trigger argument</h3>
+          <p>A snapshot carried by the event that started this action. It only exists inside an action launched by that watcher trigger.</p>
+        </article>
+        <article>
+          <code>~edStation~</code>
+          <h3>Persisted global</h3>
+          <p>The watcher's current live state. It works in any action, including chat commands, hotkeys, timers, and Stream Deck buttons.</p>
+        </article>
+        <article>
+          <code>~edEvtDocked_StationName~</code>
+          <h3>Latest-event mirror</h3>
+          <p>The field from the most recent occurrence of an event. Use it when the current action was started by something other than that event.</p>
+        </article>
+      </div>
+      <div class="callout">
+        <strong>Need a field that is not in the builder?</strong>
+        <p>Choose <em>Other event field</em> in a condition and enter the journal field name. After a real run, confirm it in <strong>Action Queues → Action History → Inspect Variables</strong>. The <a href="subactions.html">full variables reference</a> explains flattening, nested fields, arrays, and every global family.</p>
+      </div>
+    </section>
+
+    <section id="testing" class="page-section testing-section">
+      <div class="section-heading compact">
+        <div>
+          <span class="eyebrow">Before going live</span>
+          <h2>Test with the same data source the action will use.</h2>
+        </div>
+      </div>
+      <div class="test-grid">
+        <article>
+          <span class="test-number">1</span>
+          <h3>Confirm the watcher</h3>
+          <p>Make sure the standalone C# watcher action is compiled, set to precompile on application start, and running.</p>
+        </article>
+        <article>
+          <span class="test-number">2</span>
+          <h3>Cause a real event</h3>
+          <p>Trigger arguments come from a real watcher event. Testing the action by itself does not invent fields such as <code>%edEvent_StationName%</code>.</p>
+        </article>
+        <article>
+          <span class="test-number">3</span>
+          <h3>Inspect the run</h3>
+          <p>Open <strong>Action Queues → Action History</strong>, right-click the run, and inspect variables to see every exact name and value.</p>
+        </article>
+      </div>
+      <p class="source-note">Streamer.bot references: <a href="https://docs.streamer.bot/guide/core/triggers">Triggers</a> · <a href="https://docs.streamer.bot/api/sub-actions/core/logic/if-else">If / Else</a> · <a href="https://docs.streamer.bot/guide/variables">Variables</a></p>
+    </section>
+  </main>
+</div>
+
+<footer>
+  Part of the <a href="index.html">Elite Streambot user guide</a> ·
+  <a href="subactions.html">Sub-Actions &amp; Variables Reference</a> ·
+  <a href="https://github.com/TannerMidd/elite-dangerous-streambot">GitHub</a>
+</footer>
+
+<noscript>
+  <div class="noscript">This builder needs JavaScript enabled to generate the Streamer.bot setup.</div>
+</noscript>
+
+</body>
+</html>

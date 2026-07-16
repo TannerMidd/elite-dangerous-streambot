@@ -173,6 +173,7 @@
       <a href="#builder">Creating rules</a>
       <a href="#globals">Global variables</a>
       <a href="#csharp-watcher">Standalone C# watcher</a>
+      <a href="action-builder.html" class="sub">Action builder ↗</a>
       <a href="subactions.html" class="sub">Sub-actions &amp; variables ↗</a>
       <a href="#reference">Rule reference</a>
       <a href="#presets">Preset rules</a>
@@ -376,6 +377,10 @@
         <tr><td><em>Companion File Updated</em></td><td>Cargo.json / NavRoute.json / Market.json / … changes</td><td><code>%edCompanionName%</code>, <code>%edCompanionJson%</code></td></tr>
         <tr><td><em>Watcher Status</em></td><td>started / stopped / journal switched / errors</td><td><code>%edStatus%</code>, <code>%edMessage%</code></td></tr>
       </table>
+      <div class="callout tip">
+        <span class="label">Build an action step by step</span>
+        <p>Use the dedicated <a href="action-builder.html"><strong>Streamer.bot Action Builder</strong></a> to choose a journal event or ship-state trigger, add If/Else checks, pick result sub-actions, and generate the exact trigger path and variable names.</p>
+      </div>
       <div class="callout tip">
         <span class="label">Full reference</span>
         <p>Every trigger argument, every global variable, and copy-paste recipes (If/Else on a system name, a <code>!system</code> chat command, TTS with live values) live on the dedicated
