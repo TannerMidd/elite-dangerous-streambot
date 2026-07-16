@@ -172,6 +172,7 @@
       <a href="#dashboard">Dashboard tour</a>
       <a href="#builder">Creating rules</a>
       <a href="#globals">Global variables</a>
+      <a href="#csharp-watcher">Standalone C# watcher</a>
       <a href="#reference">Rule reference</a>
       <a href="#presets">Preset rules</a>
       <div class="navgroup">Help</div>
@@ -344,22 +345,102 @@
       </div>
       <div class="callout">
         <span class="label">Standalone alternative — no app needed</span>
-        <p>Prefer everything inside Streamer.bot? <a href="https://github.com/TannerMidd/elite-dangerous-streambot/blob/main/extras/ed-journal-watcher.cs">
-        <code>extras/ed-journal-watcher.cs</code></a> is a single C# action that reads the journal itself and covers
-        <em>everything</em>:</p>
-        <ul>
-          <li><strong>Native triggers</strong> in Streamer.bot's own trigger menu — one per journal event type
-            (<em>Elite Dangerous → Journal Events → FSDJump</em>) and one per ship-flag edge
-            (<em>Ship State → LandingGearDown Off</em>), with every event field attached as
-            <code>%edEvent_&lt;Field&gt;%</code> arguments;</li>
-          <li>an automatic variable mirror of <em>every</em> journal event (<code>%edEvtFSDJumpCount%</code>,
-            <code>%edEvtDocked_StationName%</code>, … including events added in future game patches), complete
-            Status.json (all flags, pips, GUI focus, destination, …), and companion files
-            (Cargo, NavRoute, Market, …);</li>
-          <li>checkpoint/resume — a Streamer.bot restart continues exactly where it left off, never replaying
-            old events as triggers.</li>
-        </ul>
-        <p>Paste it once, tick <em>Precompile on Application Start</em>, done. Use it <em>or</em> the app's sync, not both.</p>
+        <p>Prefer everything inside Streamer.bot, including <em>native triggers</em> for every game event?
+        See the <a href="#csharp-watcher">Standalone C# watcher</a> — a single paste-in action that does all of
+        this (and more) with no external app running. Use it <em>or</em> the app's sync, not both.</p>
+      </div>
+    </section>
+
+    <section id="csharp-watcher">
+      <h2>Standalone C# watcher</h2>
+      <p><a href="https://github.com/TannerMidd/elite-dangerous-streambot/blob/main/extras/ed-journal-watcher.cs"><code>extras/ed-journal-watcher.cs</code></a>
+      is the whole bridge condensed into <strong>one Streamer.bot C# action</strong>. It reads the Elite Dangerous
+      journal itself on a background worker inside Streamer.bot — the Elite Streambot app doesn't need to be
+      running (or even installed). Paste it once and Streamer.bot itself understands Elite Dangerous.</p>
+
+      <h3>Native triggers, straight from the game</h3>
+      <p>The watcher registers real entries in Streamer.bot's trigger menu, so you build automations exactly the
+      way you build Twitch ones — right-click an action's Triggers pane and pick from:</p>
+      <table>
+        <tr><th>Trigger</th><th>Fires when</th><th>Useful arguments</th></tr>
+        <tr><td><em>Elite Dangerous → Journal Events → FSDJump / Docked / Bounty / …</em></td>
+            <td>that specific event happens (one trigger per event type, added automatically as each type is first seen — including events from future game patches)</td>
+            <td><code>%edEventName%</code>, <code>%edEventJson%</code>, every field as <code>%edEvent_&lt;Field&gt;%</code> (e.g. <code>%edEvent_StarSystem%</code>)</td></tr>
+        <tr><td><em>Elite Dangerous → Ship State → LandingGearDown Off / HardpointsDeployed On / …</em></td>
+            <td>a ship flag changes, one trigger per direction</td>
+            <td><code>%edFlag%</code>, <code>%edValue%</code>, <code>%edSystem%</code></td></tr>
+        <tr><td><em>Any Journal Event</em></td><td>every live journal line</td><td>same as per-event triggers</td></tr>
+        <tr><td><em>Any Ship Flag Changed</em></td><td>any flag transition</td><td><code>%edFlag%</code>, <code>%edValue%</code></td></tr>
+        <tr><td><em>Companion File Updated</em></td><td>Cargo.json / NavRoute.json / Market.json / … changes</td><td><code>%edCompanionName%</code>, <code>%edCompanionJson%</code></td></tr>
+        <tr><td><em>Watcher Status</em></td><td>started / stopped / journal switched / errors</td><td><code>%edStatus%</code>, <code>%edMessage%</code></td></tr>
+      </table>
+
+      <div class="callout tip">
+        <span class="label">Example — "when my landing gear comes up, press L"</span>
+        <p>Create an action → right-click its Triggers → <strong>Custom → Elite Dangerous → Ship State →
+        LandingGearDown Off</strong> → add whatever sub-actions you like (a key press, a sound, a chat line).
+        That's the entire setup. Event-type and flag triggers appear in the menu once they've been seen at
+        least once; they're remembered across Streamer.bot restarts.</p>
+      </div>
+
+      <h3>Variables, same as the app's sync — and then some</h3>
+      <ul>
+        <li>Everything described under <a href="#globals">Global variables</a>: session aggregates, complete
+          Status.json state (every flag by name, pips, GUI focus, fuel, position, …).</li>
+        <li>A mirror of <strong>every journal event</strong>: <code>%edEvt&lt;Name&gt;Count%</code>,
+          <code>%edEvt&lt;Name&gt;Last%</code>, and each field of the latest occurrence as
+          <code>%edEvt&lt;Name&gt;_&lt;Field&gt;%</code> (e.g. <code>%edEvtDocked_StationName%</code>).</li>
+        <li>Companion files flattened to variables (<code>%edFileCargo_Count%</code>, …) plus navigation state:
+          <code>%edNavTargetSystem%</code>, <code>%edNavRemainingJumps%</code>, <code>%edNavDestination%</code>.</li>
+      </ul>
+
+      <h3>Built to be left alone</h3>
+      <ul>
+        <li><strong>Checkpoint/resume</strong> — it remembers its exact position in the journal, so restarting
+          Streamer.bot never replays old events as triggers and never loses new ones.</li>
+        <li><strong>First run is quiet</strong> — it rebuilds state from your current journal without firing a
+          trigger for every historical line, and a big offline backlog updates variables while suppressing the
+          trigger flood.</li>
+        <li><strong>Instant + safe</strong> — file-system notifications wake it immediately, with a once-a-second
+          safety scan as a fallback; journal rollovers and mid-write files are handled.</li>
+      </ul>
+
+      <h3>Setup (once)</h3>
+      <ol class="steps">
+        <li>In Streamer.bot: <strong>Actions</strong> → right-click → <strong>Add</strong> → name it <code>ED Journal Watcher</code>.</li>
+        <li><strong>Sub-Actions</strong> → right-click → <strong>Core → C# → Execute C# Code</strong>.</li>
+        <li>Paste the entire contents of
+          <a href="https://github.com/TannerMidd/elite-dangerous-streambot/blob/main/extras/ed-journal-watcher.cs">ed-journal-watcher.cs</a>
+          and click <strong>Compile</strong> (it should report OK).</li>
+        <li>In the sub-action's settings, tick <strong>“Precompile on Application Start”</strong> — that makes the
+          watcher register its triggers and start automatically whenever Streamer.bot starts.</li>
+        <li>Save, then right-click the action → <strong>Test Action</strong> to start it right now. Variables appear
+          under <strong>(x) Global Variables → Persisted Globals</strong>.</li>
+      </ol>
+
+      <h3>Options &amp; controls</h3>
+      <table>
+        <tr><th>What</th><th>How</th></tr>
+        <tr><td>Journal folder override</td><td>create a persisted global <code>edConfigJournalDir</code> with the full path (auto-detected otherwise, even if Windows' Saved Games folder was moved)</td></tr>
+        <tr><td>Don't start automatically</td><td>set persisted global <code>edConfigAutoStart</code> to <code>false</code></td></tr>
+        <tr><td>Start / stop / reset / inspect</td><td>use <strong>Core → C# → Execute C# Method</strong> on the sub-action: <code>StartWatcher</code>, <code>StopWatcher</code>, <code>ResetState</code> (forgets all variables and the checkpoint), <code>TestVariables</code> (logs a summary)</td></tr>
+      </table>
+
+      <h3>App sync or standalone — which one?</h3>
+      <table>
+        <tr><th>Pick the <a href="#globals">app's variable sync</a> if…</th><th>Pick the standalone watcher if…</th></tr>
+        <tr>
+          <td>you want the dashboard: alert rules with conditions and cooldowns, the visual builder, the event
+            simulator, live diagnostics — with variable sync as one feature among many.</td>
+          <td>you want zero extra software running, native Elite triggers in Streamer.bot's own menu, companion-file
+            data, and variables that keep flowing even when the app is closed.</td>
+        </tr>
+      </table>
+      <div class="callout warn">
+        <span class="label">Don't run both syncs</span>
+        <p>Both write the same <code>ed*</code> variables. Running the app's variable sync <em>and</em> the
+        standalone watcher at the same time just writes everything twice. (The app's alert rules are fine to use
+        alongside the watcher — it's only the two variable syncs that overlap.)</p>
       </div>
     </section>
 
