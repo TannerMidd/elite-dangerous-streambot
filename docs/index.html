@@ -345,12 +345,21 @@
       <div class="callout">
         <span class="label">Standalone alternative — no app needed</span>
         <p>Prefer everything inside Streamer.bot? <a href="https://github.com/TannerMidd/elite-dangerous-streambot/blob/main/extras/ed-journal-watcher.cs">
-        <code>extras/ed-journal-watcher.cs</code></a> is a single C# action that reads the journal itself on a background
-        thread and covers <em>everything</em>: the same state variables, complete Status.json (all flags, pips, GUI focus,
-        destination, …), and an automatic mirror of <em>every</em> journal event —
-        <code>%edEvtFSDJumpCount%</code>, <code>%edEvtDocked_StationName%</code>, and so on for any event the game writes,
-        including ones added in future patches. Paste it once, add the <em>Streamer.bot Started</em> trigger, done.
-        Use it <em>or</em> the app's sync, not both.</p>
+        <code>extras/ed-journal-watcher.cs</code></a> is a single C# action that reads the journal itself and covers
+        <em>everything</em>:</p>
+        <ul>
+          <li><strong>Native triggers</strong> in Streamer.bot's own trigger menu — one per journal event type
+            (<em>Elite Dangerous → Journal Events → FSDJump</em>) and one per ship-flag edge
+            (<em>Ship State → LandingGearDown Off</em>), with every event field attached as
+            <code>%edEvent_&lt;Field&gt;%</code> arguments;</li>
+          <li>an automatic variable mirror of <em>every</em> journal event (<code>%edEvtFSDJumpCount%</code>,
+            <code>%edEvtDocked_StationName%</code>, … including events added in future game patches), complete
+            Status.json (all flags, pips, GUI focus, destination, …), and companion files
+            (Cargo, NavRoute, Market, …);</li>
+          <li>checkpoint/resume — a Streamer.bot restart continues exactly where it left off, never replaying
+            old events as triggers.</li>
+        </ul>
+        <p>Paste it once, tick <em>Precompile on Application Start</em>, done. Use it <em>or</em> the app's sync, not both.</p>
       </div>
     </section>
 
