@@ -201,7 +201,7 @@
         </tr>
         <tr>
           <td><strong>Where to browse them</strong></td>
-          <td>Not listed in the UI — that's what this page is for</td>
+          <td><strong>Action Queues → Action History</strong> → right-click a run → <strong>Inspect Variables</strong></td>
           <td>Streamer.bot → <strong>(x) Global Variables → Persisted Globals</strong></td>
         </tr>
       </table>
@@ -216,10 +216,15 @@
       <h2>Finding a field name when you're not sure</h2>
       <p>Journal events carry whatever fields the game writes, so this page can't list every field of every event — but you never have to guess:</p>
       <ol class="steps">
-        <li><strong>Look at the event mirror.</strong> Open <strong>(x) Global Variables → Persisted Globals</strong> and filter for <code>edEvt</code>. After an event has happened once, every one of its fields sits there by name — e.g. seeing <code>edEvtDocked_StationName</code> tells you the trigger argument is <code>%edEvent_StationName%</code>.</li>
-        <li><strong>Log the raw event.</strong> Bind a throwaway action to <em>Any Journal Event</em> with a single <strong>Core → Logging → Log Information</strong> sub-action whose message is <code>%edEventName%: %edEventJson%</code>. Play for a minute, then read the Streamer.bot log — every field name is right there in the JSON.</li>
+        <li><strong>Inspect a real run (best).</strong> Let the trigger fire once (or play a minute with any action bound to <em>Any Journal Event</em>), then open <strong>Action Queues → Action History</strong>, right-click the run, and choose <strong>Inspect Variables</strong>. Streamer.bot shows the complete argument stack — every <code>%edEvent_…%</code> name next to its actual value, ready to copy into your sub-actions.</li>
+        <li><strong>Look at the event mirror.</strong> Open <strong>(x) Global Variables → Persisted Globals</strong> and filter for <code>edEvt</code>. After an event has happened once, every one of its fields sits there by name — e.g. seeing <code>edEvtDocked_StationName</code> tells you the trigger argument is <code>%edEvent_StationName%</code>. Works even for events that fired hours ago.</li>
+        <li><strong>Log the raw event.</strong> Bind a throwaway action to <em>Any Journal Event</em> with a single <strong>Core → Logging → Log Information</strong> sub-action whose message is <code>%edEventName%: %edEventJson%</code> — every field name is right there in the JSON.</li>
         <li><strong>Check Frontier's journal manual.</strong> The <a href="https://elite-journal.readthedocs.io/">community-hosted journal documentation</a> lists each event's fields; prefix any field with <code>edEvent_</code> to get the argument name.</li>
       </ol>
+      <div class="callout tip">
+        <span class="label">Test without playing</span>
+        <p>You don't need to be in-game to populate Action History — right-click your action → <strong>Test Action</strong> runs it (without trigger arguments), and any past real run stays inspectable. For a realistic argument stack, the easiest source is simply the last time the trigger fired.</p>
+      </div>
     </section>
 
     <section id="args-journal">
