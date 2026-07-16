@@ -4,8 +4,8 @@
  *
  *   npm run package
  *
- * Output: release/simstarr-elite-data/  (exe + public/ + rules/ + sounds/ …)
- * plus release/simstarr-elite-data-win-x64.zip
+ * Output: release/elite-streambot/  (exe + public/ + rules/ + sounds/ …)
+ * plus release/elite-streambot-win-x64.zip
  *
  * Steps: tsc → esbuild bundle (single CJS file) → SEA blob → copy node.exe →
  * postject blob injection → assemble release folder → zip.
@@ -20,8 +20,8 @@ import { inject } from 'postject';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const build = path.join(root, 'build');
 const releaseRoot = path.join(root, 'release');
-const appDir = path.join(releaseRoot, 'simstarr-elite-data');
-const exeName = 'SimStarrEliteData.exe';
+const appDir = path.join(releaseRoot, 'elite-streambot');
+const exeName = 'EliteStreambot.exe';
 
 const run = (cmd, args, opts = {}) => {
   console.log(`> ${cmd} ${args.join(' ')}`);
@@ -52,7 +52,7 @@ await esbuild.build({
   external: ['fsevents'], // chokidar's optional macOS dep
   // Bakes the packaged-build flag in: appRoot() then resolves paths relative
   // to the exe instead of import.meta.url (which doesn't exist in the bundle).
-  define: { 'process.env.SIMSTARR_PACKAGED': '"1"' },
+  define: { 'process.env.ELITE_STREAMBOT_PACKAGED': '"1"' },
   outfile: path.join(build, 'bundle.cjs'),
 });
 
@@ -85,10 +85,10 @@ fs.copyFileSync(path.join(root, 'LICENSE'), path.join(appDir, 'LICENSE'));
 fs.writeFileSync(
   path.join(appDir, 'START HERE.txt'),
   [
-    'SimStarr Elite Data',
-    '===================',
+    'Elite Streambot',
+    '===============',
     '',
-    '1. Double-click SimStarrEliteData.exe',
+    '1. Double-click EliteStreambot.exe',
     '   (Windows SmartScreen may warn because the exe is unsigned —',
     '    choose "More info" -> "Run anyway".)',
     '2. Open http://localhost:8377 in your browser.',
@@ -106,7 +106,7 @@ fs.writeFileSync(
 );
 
 // 6. zip
-const zipPath = path.join(releaseRoot, 'simstarr-elite-data-win-x64.zip');
+const zipPath = path.join(releaseRoot, 'elite-streambot-win-x64.zip');
 fs.rmSync(zipPath, { force: true });
 run('powershell', ['-NoProfile', '-Command',
   `Compress-Archive -Path '${appDir}' -DestinationPath '${zipPath}'`]);

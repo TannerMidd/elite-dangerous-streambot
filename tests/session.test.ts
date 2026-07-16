@@ -48,9 +48,9 @@ test('docking state transitions', () => {
 
 test('commander identity from LoadGame', () => {
   const s = new SessionState();
-  s.handle(evt({ event: 'LoadGame', Commander: 'SimStarr', Ship: 'Krait_MkII', ShipName: 'STARDUST', Credits: 5000 }));
+  s.handle(evt({ event: 'LoadGame', Commander: 'Jameson', Ship: 'Krait_MkII', ShipName: 'STARDUST', Credits: 5000 }));
   const stats = s.getStats();
-  assert.equal(stats.cmdr, 'SimStarr');
+  assert.equal(stats.cmdr, 'Jameson');
   assert.equal(stats.shipName, 'STARDUST');
   assert.equal(stats.balance, 5000);
 });

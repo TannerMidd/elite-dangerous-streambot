@@ -1,10 +1,10 @@
-# SimStarr Elite Data
+# Elite Streambot
 
 **A real-time bridge between Elite Dangerous and Streamer.bot.** Watches the game's journal as you play and fires Streamer.bot actions when things happen in the black — bounties, interdictions, deaths, first discoveries, rank-ups, low fuel, anything the journal records — driven by a flexible rules engine with a no-code visual builder.
 
 ```
 ┌─────────────────┐      ┌──────────────────────┐      ┌──────────────┐      ┌─────────────────┐
-│ Elite Dangerous │ ───► │  SimStarr Elite Data │ ───► │ Streamer.bot │ ───► │ sounds · TTS ·  │
+│ Elite Dangerous │ ───► │    Elite Streambot   │ ───► │ Streamer.bot │ ───► │ sounds · TTS ·  │
 │ journal files   │      │  rules + templates   │  WS  │ your actions │      │ OBS · chat · …  │
 └─────────────────┘      └──────────────────────┘      └──────────────┘      └─────────────────┘
 ```
@@ -26,7 +26,7 @@ Built for streamers: set it up once, leave it running, and your alerts react to 
 
 ### Option A — packaged exe (no Node.js required)
 
-Grab `simstarr-elite-data-win-x64.zip` from the repo's releases/CI artifacts (or build it yourself with `npm run package`), unzip to a normal folder, and double-click **SimStarrEliteData.exe**. Windows SmartScreen may warn because the exe is unsigned — *More info → Run anyway*. Keep the folder together: the exe reads `public/`, `rules/`, and `sounds/` from beside itself and saves your settings to `config.json` there.
+Grab `elite-streambot-win-x64.zip` from the repo's releases/CI artifacts (or build it yourself with `npm run package`), unzip to a normal folder, and double-click **EliteStreambot.exe**. Windows SmartScreen may warn because the exe is unsigned — *More info → Run anyway*. Keep the folder together: the exe reads `public/`, `rules/`, and `sounds/` from beside itself and saves your settings to `config.json` there.
 
 ### Option B — from source
 
@@ -116,7 +116,7 @@ Click **⚙ Settings** in the dashboard for the common options — changes apply
 
 | Key | Default | Notes |
 |---|---|---|
-| `appTitle` | `SimStarr Elite Data` | dashboard title (or click the header title) |
+| `appTitle` | `Elite Streambot` | dashboard title (or click the header title) |
 | `journalDir` | auto-detect | `%USERPROFILE%\Saved Games\Frontier Developments\Elite Dangerous` |
 | `uiPort` | `8377` | dashboard port (restart to apply) |
 | `uiHost` | `127.0.0.1` | see [Security](#security) before changing |

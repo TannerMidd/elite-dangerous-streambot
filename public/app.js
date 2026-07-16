@@ -1,4 +1,4 @@
-/* SimStarr Elite Data dashboard */
+/* Elite Streambot dashboard */
 (() => {
   const $ = (sel) => document.querySelector(sel);
   const eventList = $('#event-list');
@@ -40,11 +40,11 @@
 
   function renderTitle(title) {
     if (editingTitle) return; // don't clobber the input while the user types
-    const words = String(title || 'SimStarr Elite Data').split(' ');
+    const words = String(title || 'Elite Streambot').split(' ');
     // accent the tail of the title (everything after the first word)
     const head = words.shift();
     titleEl.innerHTML = `${esc(head)}${words.length ? ` <span class="accent">${esc(words.join(' '))}</span>` : ''}`;
-    document.title = title || 'SimStarr Elite Data';
+    document.title = title || 'Elite Streambot';
   }
 
   titleEl.addEventListener('click', () => {
@@ -746,7 +746,7 @@
   }
 
   $('#quit-app').addEventListener('click', async () => {
-    if (!confirm('Stop SimStarr Elite Data? Alerts will no longer fire until you start the app again.')) return;
+    if (!confirm('Stop Elite Streambot? Alerts will no longer fire until you start the app again.')) return;
     quitting = true;
     try {
       await api('/api/quit', { method: 'POST' });

@@ -2,7 +2,7 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "simstarr",
+      "name": "elite-streambot",
       "runtimeExecutable": "node",
       "runtimeArgs": ["dist/index.js"],
       "port": 8377

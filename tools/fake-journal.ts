@@ -53,8 +53,8 @@ let systemIdx = 0;
 
 // Boot events
 write({ event: 'Fileheader', gameversion: '4.0.0.100', language: 'English/UK' });
-write({ event: 'Commander', Name: 'SimStarr', FID: 'F0000000' });
-write({ event: 'LoadGame', Commander: 'SimStarr', Ship: 'Krait_MkII', Ship_Localised: 'Krait Mk II', ShipName: 'STARDUST', Credits: balance });
+write({ event: 'Commander', Name: 'Jameson', FID: 'F0000000' });
+write({ event: 'LoadGame', Commander: 'Jameson', Ship: 'Krait_MkII', Ship_Localised: 'Krait Mk II', ShipName: 'STARDUST', Credits: balance });
 write({ event: 'Location', StarSystem: systems[0], Docked: true, StationName: 'Dalton Gateway' });
 writeStatus();
 

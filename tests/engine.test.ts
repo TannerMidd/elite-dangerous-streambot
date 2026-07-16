@@ -19,7 +19,7 @@ const evt = (e: Record<string, unknown>, replay = false): PipelineEvent => ({
 const session = () => new SessionState().getStats();
 
 beforeEach(() => {
-  dir = fs.mkdtempSync(path.join(os.tmpdir(), 'simstarr-rules-'));
+  dir = fs.mkdtempSync(path.join(os.tmpdir(), 'elite-streambot-rules-'));
   engine = new RuleEngine(dir);
 });
 

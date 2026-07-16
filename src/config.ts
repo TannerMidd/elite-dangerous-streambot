@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-export const DEFAULT_TITLE = 'SimStarr Elite Data';
+export const DEFAULT_TITLE = 'Elite Streambot';
 
 export interface AppConfig {
   /** Dashboard title — click it in the header to rename. */

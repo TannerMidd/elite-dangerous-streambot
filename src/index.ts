@@ -10,14 +10,14 @@ import type { DispatchRecord, LoadedRule, PipelineEvent } from './types.js';
 
 /**
  * App root — where config.json, rules/, and public/ live.
- * Packaged exe: the folder containing the executable (SIMSTARR_PACKAGED is
- * baked in at bundle time by scripts/package.mjs — import.meta.url does not
+ * Packaged exe: the folder containing the executable (ELITE_STREAMBOT_PACKAGED
+ * is baked in at bundle time by scripts/package.mjs — import.meta.url does not
  * exist inside the CJS single-executable bundle, so it must not be touched
  * on that path).
  * From source: the project root (dist/ and src/ sit one level below it).
  */
 function appRoot(): string {
-  if (process.env.SIMSTARR_PACKAGED === '1') return path.dirname(process.execPath);
+  if (process.env.ELITE_STREAMBOT_PACKAGED === '1') return path.dirname(process.execPath);
   return path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 }
 const ROOT = appRoot();
@@ -25,7 +25,7 @@ const ROOT = appRoot();
 const DISPATCH_LOG_LIMIT = 200;
 
 async function main(): Promise<void> {
-  console.log('SimStarr Elite Data — Elite Dangerous → Streamer.bot bridge');
+  console.log('Elite Streambot — Elite Dangerous → Streamer.bot bridge');
 
   const config = loadConfig(ROOT);
   const watcher = new JournalWatcher(config.journalDir!);
