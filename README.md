@@ -2,6 +2,8 @@
 
 **A real-time bridge between Elite Dangerous and Streamer.bot.** Watches the game's journal as you play and fires Streamer.bot actions when things happen in the black — bounties, interdictions, deaths, first discoveries, rank-ups, low fuel, anything the journal records — driven by a flexible rules engine with a no-code visual builder.
 
+📖 **[User Guide](https://tannermidd.github.io/elite-dangerous-streambot/)** &nbsp;·&nbsp; ⬇️ **[Download](https://github.com/TannerMidd/elite-dangerous-streambot/releases/latest)**
+
 ```
 ┌─────────────────┐      ┌──────────────────────┐      ┌──────────────┐      ┌─────────────────┐
 │ Elite Dangerous │ ───► │    Elite Streambot   │ ───► │ Streamer.bot │ ───► │ sounds · TTS ·  │
