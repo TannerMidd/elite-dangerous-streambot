@@ -9,26 +9,96 @@
 
   const EXPORT_HEADER = new Uint8Array([0x53, 0x42, 0x41, 0x45]); // SBAE
   const EMPTY_GUID = "00000000-0000-0000-0000-000000000000";
-  const SUPPORTED_OPERATORS = new Set([
-    "Equals (Ignore Case)",
-    "Not Equals (Ignore Case)",
-    "Equals",
-    "Not Equals",
-    "Contains",
-    "Regex Match",
-    "Is Null or Empty",
-    "Greater Than",
-    "Less Than"
-  ]);
+
+  const CONDITION_OPERATIONS = Object.freeze({
+    "Equals": 0,
+    "Not Equals": 1,
+    "Contains": 2,
+    "Regex Match": 3,
+    "Less Than": 4,
+    "Greater Than": 5,
+    "Equals (Ignore Case)": 7,
+    "Not Equals (Ignore Case)": 8,
+    "Is Null or Empty": 9
+  });
+
+  const OBS_STATES = Object.freeze({
+    "Visible": 0,
+    "Hidden": 1,
+    "Toggle": 2
+  });
+
+  const KEY_CODES = Object.freeze({
+    BACKSPACE: 8,
+    BKSP: 8,
+    TAB: 9,
+    ENTER: 13,
+    RETURN: 13,
+    PAUSE: 19,
+    CAPSLOCK: 20,
+    ESC: 27,
+    ESCAPE: 27,
+    SPACE: 32,
+    SPACEBAR: 32,
+    PGUP: 33,
+    PAGEUP: 33,
+    PGDN: 34,
+    PAGEDOWN: 34,
+    END: 35,
+    HOME: 36,
+    LEFT: 37,
+    UP: 38,
+    RIGHT: 39,
+    DOWN: 40,
+    PRTSC: 44,
+    PRINTSCREEN: 44,
+    INSERT: 45,
+    INS: 45,
+    DELETE: 46,
+    DEL: 46,
+    APPS: 93,
+    NUMPAD0: 96,
+    NUMPAD1: 97,
+    NUMPAD2: 98,
+    NUMPAD3: 99,
+    NUMPAD4: 100,
+    NUMPAD5: 101,
+    NUMPAD6: 102,
+    NUMPAD7: 103,
+    NUMPAD8: 104,
+    NUMPAD9: 105,
+    MULTIPLY: 106,
+    ADD: 107,
+    SEPARATOR: 108,
+    SUBTRACT: 109,
+    DECIMAL: 110,
+    DIVIDE: 111,
+    NUMLOCK: 144,
+    SCROLLLOCK: 145,
+    VOLUMEMUTE: 173,
+    VOLUMEDOWN: 174,
+    VOLUMEUP: 175,
+    MEDIANEXT: 176,
+    MEDIAPREVIOUS: 177,
+    MEDIASTOP: 178,
+    MEDIAPLAYPAUSE: 179,
+    PLUS: 187,
+    COMMA: 188,
+    MINUS: 189,
+    PERIOD: 190
+  });
 
   function createImportString(config) {
     const document = buildExportDocument(config);
+    const triggerInfo = getTriggerExportInfo(config);
     return encodeDocument(document).then((importString) => ({
       importString,
       document,
-      triggerIncluded: includesCommandTrigger(config),
-      command: includesCommandTrigger(config) ? normalizeCommand(config.trigger.externalLabel) : "",
-      manualTriggerPath: includesCommandTrigger(config) ? "" : String(config.triggerPath || "")
+      triggerIncluded: triggerInfo.included,
+      triggerKind: triggerInfo.kind,
+      triggerLabel: triggerInfo.label,
+      command: triggerInfo.kind === "command" ? triggerInfo.command : "",
+      manualTriggerPath: triggerInfo.included ? "" : String(config.triggerPath || "")
     }));
   }
 
@@ -37,56 +107,77 @@
     if (errors.length) throw validationError(errors);
 
     const actionId = guid();
-    const subActionId = guid();
-    const commandTrigger = includesCommandTrigger(config);
-    const commandId = commandTrigger ? guid() : null;
-    const commandName = commandTrigger ? normalizeCommand(config.trigger.externalLabel) : "";
-    const source = buildCSharpUnchecked(config);
-    const triggerDescription = commandTrigger
-      ? `Includes the ${config.trigger.externalKind === "youtube-command" ? "YouTube" : "Twitch"} command ${commandName}.`
-      : `After import, attach this trigger: ${String(config.triggerPath || "the selected trigger")}.`;
+    const triggerInfo = getTriggerExportInfo(config);
+    const triggers = [];
+    const commands = [];
 
-    const action = {
-      id: actionId,
-      queue: EMPTY_GUID,
-      enabled: true,
-      excludeFromHistory: false,
-      excludeFromPending: false,
-      name: String(config.actionName).trim(),
-      group: "Elite Dangerous",
-      alwaysRun: false,
-      randomAction: false,
-      concurrent: false,
-      triggers: commandTrigger ? [{
+    if (triggerInfo.kind === "command") {
+      const commandId = guid();
+      triggers.push({
         commandId,
         id: guid(),
         type: 401,
         enabled: true,
         exclusions: []
-      }] : [],
-      subActions: [{
-        name: "Generated Elite Dangerous action",
-        description: "Generated conditions and outcomes. Edit this code block or rebuild the import string to change the recipe.",
-        references: [
-          "C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\mscorlib.dll",
-          "C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\System.dll"
-        ],
-        byteCode: utf8ToBase64(source),
-        precompile: true,
-        delayStart: false,
-        saveResultToVariable: false,
-        saveToVariable: "",
-        id: subActionId,
-        weight: 0,
-        type: 99999,
-        parentId: null,
+      });
+      commands.push(buildCommand(config, commandId, triggerInfo.command));
+    } else if (triggerInfo.kind === "custom-code-event") {
+      triggers.push({
+        name: triggerInfo.label,
+        eventName: triggerInfo.eventName,
+        id: guid(),
+        type: 18002,
         enabled: true,
-        index: 0
-      }],
-      collapsedGroups: []
-    };
+        exclusions: []
+      });
+    }
 
-    const commands = commandTrigger ? [{
+    const triggerDescription = triggerInfo.included
+      ? `Includes the ${triggerInfo.label} trigger.`
+      : `After import, attach this trigger: ${String(config.triggerPath || "the selected trigger")}.`;
+    const runActionDescription = (config.outcomes || []).some((outcome) => outcome.type === "run-action")
+      ? " Run Action targets are installation-specific; open that sub-action after import and select the named target."
+      : "";
+
+    return {
+      meta: {
+        name: String(config.actionName).trim(),
+        author: "Elite Dangerous Streambot Action Builder",
+        version: "1.1.0",
+        description: `Generated for the standalone Elite Dangerous C# watcher. ${triggerDescription}${runActionDescription}`,
+        autoRunAction: null,
+        minimumVersion: null
+      },
+      data: {
+        actions: [{
+          id: actionId,
+          queue: EMPTY_GUID,
+          enabled: true,
+          excludeFromHistory: false,
+          excludeFromPending: false,
+          name: String(config.actionName).trim(),
+          group: "Elite Dangerous",
+          alwaysRun: false,
+          randomAction: false,
+          concurrent: false,
+          triggers,
+          subActions: buildNativeSubActions(config),
+          collapsedGroups: []
+        }],
+        queues: [],
+        commands,
+        websocketServers: [],
+        websocketClients: [],
+        timers: []
+      },
+      version: 23,
+      exportedFrom: "1.0.4",
+      minimumVersion: "1.0.0-alpha.1"
+    };
+  }
+
+  function buildCommand(config, commandId, commandName) {
+    return {
       permittedUsers: [],
       permittedGroups: [],
       id: commandId,
@@ -107,197 +198,186 @@
       userCooldown: 0,
       group: "Elite Dangerous",
       grantType: 0
-    }] : [];
-
-    return {
-      meta: {
-        name: String(config.actionName).trim(),
-        author: "Elite Dangerous Streambot Action Builder",
-        version: "1.0.0",
-        description: `Generated for the standalone Elite Dangerous C# watcher. ${triggerDescription}`,
-        autoRunAction: null,
-        minimumVersion: null
-      },
-      data: {
-        actions: [action],
-        queues: [],
-        commands,
-        websocketServers: [],
-        websocketClients: [],
-        timers: []
-      },
-      version: 23,
-      exportedFrom: "1.0.4",
-      minimumVersion: "1.0.0-alpha.1"
     };
   }
 
-  function buildCSharp(config) {
-    const errors = validateConfig(config);
-    if (errors.length) throw validationError(errors);
-    return buildCSharpUnchecked(config);
-  }
+  function buildNativeSubActions(config) {
+    const conditions = Array.isArray(config.conditions) ? config.conditions : [];
+    const outcomes = Array.isArray(config.outcomes) ? config.outcomes : [];
 
-  function buildCSharpUnchecked(config) {
-    const lines = [
-      "using System;",
-      "using System.Globalization;",
-      "using System.Text.RegularExpressions;",
-      "",
-      "public class CPHInline",
-      "{",
-      "    public bool Execute()",
-      "    {"
-    ];
-
-    (config.conditions || []).forEach((condition) => {
-      lines.push(
-        `        if (!Matches(ReadValue(${csharpString(condition.token)}), ${csharpString(condition.operator)}, ${csharpString(condition.value)}, ${csharpString(condition.type || "string")})) return true;`
-      );
-    });
-
-    if ((config.conditions || []).length && (config.outcomes || []).length) lines.push("");
-
-    (config.outcomes || []).forEach((outcome, index) => {
-      appendOutcome(lines, outcome, index);
-    });
-
-    lines.push(
-      "        return true;",
-      "    }",
-      "",
-      "    private object ReadValue(string token)",
-      "    {",
-      "        if (String.IsNullOrEmpty(token)) return null;",
-      "        if (token.Length > 2 && token[0] == '%' && token[token.Length - 1] == '%')",
-      "        {",
-      "            object value;",
-      "            return CPH.TryGetArg<object>(token.Substring(1, token.Length - 2), out value) ? value : null;",
-      "        }",
-      "        if (token.Length > 2 && token[0] == '~' && token[token.Length - 1] == '~')",
-      "        {",
-      "            return CPH.GetGlobalVar<object>(token.Substring(1, token.Length - 2), true);",
-      "        }",
-      "        return token;",
-      "    }",
-      "",
-      "    private string Resolve(string template)",
-      "    {",
-      "        if (String.IsNullOrEmpty(template)) return String.Empty;",
-      "        return Regex.Replace(template, @\"%[^%\\r\\n]+%|~[^~\\r\\n]+~\", delegate(Match match)",
-      "        {",
-      "            return ToText(ReadValue(match.Value));",
-      "        });",
-      "    }",
-      "",
-      "    private string ToText(object value)",
-      "    {",
-      "        if (value == null) return String.Empty;",
-      "        IFormattable formattable = value as IFormattable;",
-      "        return formattable == null ? value.ToString() : formattable.ToString(null, CultureInfo.InvariantCulture);",
-      "    }",
-      "",
-      "    private bool Matches(object actual, string operation, string expected, string valueType)",
-      "    {",
-      "        string actualText = ToText(actual);",
-      "        if (operation == \"Is Null or Empty\") return String.IsNullOrEmpty(actualText);",
-      "",
-      "        if (valueType == \"number\")",
-      "        {",
-      "            decimal actualNumber;",
-      "            decimal expectedNumber;",
-      "            if (!TryDecimal(actualText, out actualNumber) || !TryDecimal(expected, out expectedNumber)) return false;",
-      "            if (operation == \"Greater Than\") return actualNumber > expectedNumber;",
-      "            if (operation == \"Less Than\") return actualNumber < expectedNumber;",
-      "            if (operation == \"Not Equals\" || operation == \"Not Equals (Ignore Case)\") return actualNumber != expectedNumber;",
-      "            return actualNumber == expectedNumber;",
-      "        }",
-      "",
-      "        if (valueType == \"boolean\")",
-      "        {",
-      "            bool actualBoolean;",
-      "            bool expectedBoolean;",
-      "            if (!Boolean.TryParse(actualText, out actualBoolean) || !Boolean.TryParse(expected, out expectedBoolean)) return false;",
-      "            return operation == \"Not Equals\" || operation == \"Not Equals (Ignore Case)\"",
-      "                ? actualBoolean != expectedBoolean",
-      "                : actualBoolean == expectedBoolean;",
-      "        }",
-      "",
-      "        if (operation == \"Equals (Ignore Case)\") return String.Equals(actualText, expected, StringComparison.OrdinalIgnoreCase);",
-      "        if (operation == \"Not Equals (Ignore Case)\") return !String.Equals(actualText, expected, StringComparison.OrdinalIgnoreCase);",
-      "        if (operation == \"Equals\") return String.Equals(actualText, expected, StringComparison.Ordinal);",
-      "        if (operation == \"Not Equals\") return !String.Equals(actualText, expected, StringComparison.Ordinal);",
-      "        if (operation == \"Contains\") return actualText.IndexOf(expected, StringComparison.Ordinal) >= 0;",
-      "        if (operation == \"Regex Match\")",
-      "        {",
-      "            try",
-      "            {",
-      "                return Regex.IsMatch(actualText, expected);",
-      "            }",
-      "            catch (ArgumentException ex)",
-      "            {",
-      "                CPH.LogWarn(\"[ED Builder] Invalid regular expression: \" + ex.Message);",
-      "                return false;",
-      "            }",
-      "        }",
-      "        return false;",
-      "    }",
-      "",
-      "    private bool TryDecimal(string value, out decimal result)",
-      "    {",
-      "        return Decimal.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out result)",
-      "            || Decimal.TryParse(value, NumberStyles.Any, CultureInfo.CurrentCulture, out result);",
-      "    }",
-      "}"
-    );
-
-    return lines.join("\r\n");
-  }
-
-  function appendOutcome(lines, outcome, index) {
-    switch (outcome.type) {
-      case "tts":
-        lines.push(`        CPH.TtsSpeak(Resolve(${csharpString(outcome.voiceAlias)}), Resolve(${csharpString(outcome.message)}), false);`);
-        break;
-      case "chat":
-        if (outcome.platform === "YouTube") {
-          lines.push(`        CPH.SendYouTubeMessageToLatestMonitored(Resolve(${csharpString(outcome.message)}), true, true);`);
-        } else if (outcome.platform === "Kick") {
-          lines.push(`        CPH.SendKickMessage(Resolve(${csharpString(outcome.message)}), true, true);`);
-        } else {
-          lines.push(`        CPH.SendMessage(Resolve(${csharpString(outcome.message)}), true, true);`);
-        }
-        break;
-      case "obs": {
-        const sceneName = `scene${index}`;
-        const sourceName = `source${index}`;
-        lines.push(
-          `        string ${sceneName} = Resolve(${csharpString(outcome.scene)});`,
-          `        string ${sourceName} = Resolve(${csharpString(outcome.source)});`
-        );
-        if (outcome.obsState === "Toggle") {
-          lines.push(
-            `        bool visible${index} = CPH.ObsIsSourceVisible(${sceneName}, ${sourceName}, 0);`,
-            `        CPH.ObsSetSourceVisibility(${sceneName}, ${sourceName}, !visible${index}, 0);`
-          );
-        } else {
-          lines.push(`        CPH.ObsSetSourceVisibility(${sceneName}, ${sourceName}, ${outcome.obsState === "Hidden" ? "false" : "true"}, 0);`);
-        }
-        break;
-      }
-      case "run-action":
-        lines.push(`        CPH.RunAction(Resolve(${csharpString(outcome.actionName)}), true);`);
-        break;
-      case "keyboard":
-        lines.push(`        CPH.KeyboardPress(${csharpString(toSendKeys(outcome.key))});`);
-        break;
-      case "sound":
-      default:
-        lines.push(
-          `        CPH.PlaySound(Resolve(${csharpString(outcome.file)}), ${volumeLiteral(outcome.volume)}, ${outcome.wait ? "true" : "false"}, \"\", true);`
-        );
-        break;
+    if (!conditions.length) {
+      return outcomes.map((outcome, index) => buildNativeOutcome(outcome, null, index));
     }
+
+    return [buildCondition(conditions, outcomes, 0, null, 0)];
+  }
+
+  function buildCondition(conditions, outcomes, conditionIndex, parentId, index) {
+    const condition = conditions[conditionIndex];
+    const conditionId = guid();
+    const trueGroupId = guid();
+    const falseGroupId = guid();
+    const trueChildren = conditionIndex + 1 < conditions.length
+      ? [buildCondition(conditions, outcomes, conditionIndex + 1, trueGroupId, 0)]
+      : outcomes.map((outcome, outcomeIndex) => buildNativeOutcome(outcome, trueGroupId, outcomeIndex));
+
+    const trueGroup = {
+      random: false,
+      subActions: trueChildren,
+      id: trueGroupId,
+      weight: 0,
+      type: 99901,
+      parentId: conditionId,
+      enabled: true,
+      index: 0
+    };
+    const falseGroup = {
+      random: false,
+      subActions: [],
+      id: falseGroupId,
+      weight: 0,
+      type: 99902,
+      parentId: conditionId,
+      enabled: true,
+      index: 1
+    };
+
+    return {
+      input: String(condition.token || ""),
+      operation: CONDITION_OPERATIONS[condition.operator],
+      value: condition.operator === "Is Null or Empty" ? null : String(condition.value ?? ""),
+      autoType: condition.autoType !== false,
+      subActions: [trueGroup, falseGroup],
+      id: conditionId,
+      weight: 0,
+      type: 120,
+      parentId,
+      enabled: true,
+      index
+    };
+  }
+
+  function buildNativeOutcome(outcome, parentId, index) {
+    switch (outcome.type) {
+      case "sound":
+        return nativeSubAction(1, parentId, index, {
+          device: null,
+          soundFile: String(outcome.file || ""),
+          finishBeforeContinuing: outcome.wait !== false,
+          volume: Number(outcome.volume) / 100,
+          soundName: "",
+          useFileNameAsName: true
+        });
+      case "tts":
+        return nativeSubAction(602, parentId, index, {
+          alias: String(outcome.voiceAlias || ""),
+          message: String(outcome.message || ""),
+          badWordFilter: false,
+          delay: false,
+          silent: false
+        });
+      case "chat": {
+        const type = outcome.platform === "YouTube" ? 4001 : outcome.platform === "Kick" ? 35001 : 10;
+        const fields = {
+          text: String(outcome.message || ""),
+          useBot: true,
+          fallback: true
+        };
+        if (type === 4001) fields.broadcast = 0;
+        return nativeSubAction(type, parentId, index, fields);
+      }
+      case "obs":
+        return nativeSubAction(30, parentId, index, {
+          sceneName: String(outcome.scene || ""),
+          sourceName: String(outcome.source || ""),
+          state: OBS_STATES[outcome.obsState] ?? 0,
+          connectionId: EMPTY_GUID
+        });
+      case "run-action":
+        return nativeSubAction(4, parentId, index, {
+          actionId: EMPTY_GUID,
+          runImmedately: true
+        });
+      case "keyboard": {
+        const shortcut = parseKeyboardShortcut(outcome.key);
+        return nativeSubAction(1012, parentId, index, {
+          key: shortcut.key,
+          modifiers: shortcut.modifiers
+        });
+      }
+      default:
+        throw validationError(["Choose a specific supported sub-action before creating a native import."]);
+    }
+  }
+
+  function nativeSubAction(type, parentId, index, fields) {
+    return {
+      ...fields,
+      id: guid(),
+      weight: 0,
+      type,
+      parentId,
+      enabled: true,
+      index
+    };
+  }
+
+  function getTriggerExportInfo(config) {
+    const trigger = config && config.trigger ? config.trigger : {};
+
+    if (trigger.type === "external") {
+      if (trigger.externalKind === "twitch-command" || trigger.externalKind === "youtube-command") {
+        const platform = trigger.externalKind === "youtube-command" ? "YouTube" : "Twitch";
+        const command = normalizeCommand(trigger.externalLabel);
+        return {
+          included: true,
+          kind: "command",
+          label: `${platform} command ${command}`,
+          command
+        };
+      }
+      return {
+        included: false,
+        kind: "manual",
+        label: String(config.triggerPath || "the selected trigger")
+      };
+    }
+
+    if (trigger.type === "flag") {
+      const edge = trigger.edge === "off" ? "Off" : "On";
+      return {
+        included: true,
+        kind: "custom-code-event",
+        label: `${trigger.flag} ${edge}`,
+        eventName: `ed.flag.${trigger.flag}.${trigger.edge === "off" ? "off" : "on"}`
+      };
+    }
+
+    if (trigger.type === "companion") {
+      return {
+        included: true,
+        kind: "custom-code-event",
+        label: "Companion File Updated",
+        eventName: "ed.companion.updated"
+      };
+    }
+
+    if (trigger.type === "watcher") {
+      return {
+        included: true,
+        kind: "custom-code-event",
+        label: "Watcher Status",
+        eventName: "ed.watcher.status"
+      };
+    }
+
+    const event = trigger.event === "__any__" ? "Any Journal Event" : String(trigger.event || "Docked");
+    return {
+      included: true,
+      kind: "custom-code-event",
+      label: event,
+      eventName: trigger.event === "__any__" ? "ed.journal.event" : `ed.evt.${sanitizeEventName(event)}`
+    };
   }
 
   function validateConfig(config) {
@@ -330,7 +410,9 @@
       if (!(/^%[^%]+%$/.test(token) || /^~[^~]+~$/.test(token))) {
         errors.push(`Condition ${number} needs a valid %argument% or ~persistedGlobal~ token.`);
       }
-      if (!SUPPORTED_OPERATORS.has(operator)) errors.push(`Condition ${number} uses an unsupported operator.`);
+      if (!Object.prototype.hasOwnProperty.call(CONDITION_OPERATIONS, operator)) {
+        errors.push(`Condition ${number} uses an unsupported operator.`);
+      }
       if (!["string", "number", "boolean"].includes(type)) errors.push(`Condition ${number} uses an unsupported value type.`);
       if (operator !== "Is Null or Empty" && !String(condition.value ?? "").trim()) {
         errors.push(`Condition ${number} needs a comparison value.`);
@@ -361,6 +443,9 @@
         case "chat":
           if (!["Twitch", "Kick", "YouTube"].includes(outcome.platform)) errors.push(`Sub-action ${number}: choose a supported chat platform.`);
           if (!String(outcome.message || "").trim()) errors.push(`Sub-action ${number}: enter the chat message.`);
+          if (outcome.platform === "YouTube" && extractTokens(outcome.message).length) {
+            errors.push(`Sub-action ${number}: YouTube's native Send Message sub-action only supports plain text.`);
+          }
           break;
         case "obs":
           if (!String(outcome.scene || "").trim() || !String(outcome.source || "").trim()) {
@@ -372,7 +457,7 @@
           break;
         case "keyboard":
           try {
-            toSendKeys(outcome.key);
+            parseKeyboardShortcut(outcome.key);
           } catch (error) {
             errors.push(`Sub-action ${number}: ${error.message}`);
           }
@@ -403,79 +488,70 @@
     return command.startsWith("!") ? command : `!${command}`;
   }
 
-  function toSendKeys(value) {
+  function parseKeyboardShortcut(value) {
     const input = String(value || "").trim();
     if (!input) throw new Error("choose the key or shortcut.");
-    if (/^[+^%]*\{[^{}]+\}$/.test(input)) return input;
+
+    const sendKeys = input.match(/^([+^%]*)\{([^{}]+)\}$/);
+    if (sendKeys) {
+      return {
+        key: resolveKeyCode(sendKeys[2]),
+        modifiers:
+          (sendKeys[1].includes("%") ? 1 : 0) |
+          (sendKeys[1].includes("^") ? 2 : 0) |
+          (sendKeys[1].includes("+") ? 4 : 0)
+      };
+    }
 
     const parts = input.split("+").map((part) => part.trim()).filter(Boolean);
-    let hasCtrl = false;
-    let hasShift = false;
-    let hasAlt = false;
-    let key = "";
+    let modifiers = 0;
+    let keyName = "";
 
     parts.forEach((part) => {
       const normalized = part.toLowerCase();
-      if (normalized === "ctrl" || normalized === "control") {
-        hasCtrl = true;
+      if (normalized === "alt") {
+        modifiers |= 1;
+      } else if (normalized === "ctrl" || normalized === "control") {
+        modifiers |= 2;
       } else if (normalized === "shift") {
-        hasShift = true;
-      } else if (normalized === "alt") {
-        hasAlt = true;
+        modifiers |= 4;
       } else if (normalized === "win" || normalized === "windows" || normalized === "meta" || normalized === "cmd") {
-        throw new Error("Windows-key shortcuts are not supported by Streamer.bot's SendKeys method.");
-      } else if (key) {
+        throw new Error("Windows-key modifiers are not supported by Streamer.bot's Keyboard Press sub-action.");
+      } else if (keyName) {
         throw new Error("enter one key plus optional Ctrl, Shift, or Alt modifiers.");
       } else {
-        key = part;
+        keyName = part;
       }
     });
 
-    if (!key) throw new Error("choose a non-modifier key.");
-    const keyName = normalizeKeyName(key);
-    return `${hasCtrl ? "^" : ""}${hasShift ? "+" : ""}${hasAlt ? "%" : ""}{${keyName}}`;
+    if (!keyName) throw new Error("choose a non-modifier key.");
+    return { key: resolveKeyCode(keyName), modifiers };
   }
 
-  function normalizeKeyName(value) {
-    const raw = String(value).trim().replace(/^\{|\}$/g, "");
-    const keyMap = {
-      "esc": "ESC",
-      "escape": "ESC",
-      "return": "ENTER",
-      "enter": "ENTER",
-      "space": "SPACE",
-      "spacebar": "SPACE",
-      "del": "DELETE",
-      "delete": "DELETE",
-      "backspace": "BACKSPACE",
-      "bksp": "BACKSPACE",
-      "page up": "PGUP",
-      "pageup": "PGUP",
-      "pgup": "PGUP",
-      "page down": "PGDN",
-      "pagedown": "PGDN",
-      "pgdn": "PGDN",
-      "up arrow": "UP",
-      "down arrow": "DOWN",
-      "left arrow": "LEFT",
-      "right arrow": "RIGHT"
-    };
-    return keyMap[raw.toLowerCase()] || raw.toUpperCase();
+  function resolveKeyCode(value) {
+    const normalized = String(value || "")
+      .trim()
+      .replace(/[\s_-]+/g, "")
+      .toUpperCase();
+
+    if (/^[A-Z]$/.test(normalized) || /^[0-9]$/.test(normalized)) {
+      return normalized.charCodeAt(0);
+    }
+    if (/^F([1-9]|1[0-9]|2[0-4])$/.test(normalized)) {
+      return 111 + Number(normalized.slice(1));
+    }
+    if (Object.prototype.hasOwnProperty.call(KEY_CODES, normalized)) {
+      return KEY_CODES[normalized];
+    }
+    throw new Error(`"${value}" is not a supported Keyboard Press key.`);
   }
 
-  function volumeLiteral(value) {
-    const normalized = Math.max(0, Math.min(100, Number(value))) / 100;
-    return `${Number(normalized.toFixed(4))}f`;
+  function extractTokens(text) {
+    return String(text || "").match(/%[^%\r\n]+%|~[^~\r\n]+~/g) || [];
   }
 
-  function csharpString(value) {
-    return `"${String(value ?? "")
-      .replace(/\\/g, "\\\\")
-      .replace(/"/g, "\\\"")
-      .replace(/\0/g, "\\0")
-      .replace(/\r/g, "\\r")
-      .replace(/\n/g, "\\n")
-      .replace(/\t/g, "\\t")}"`;
+  function sanitizeEventName(value) {
+    return String(value || "").replace(/[^A-Za-z0-9_]/g, "");
   }
 
   async function encodeDocument(document) {
@@ -524,10 +600,6 @@
     throw new Error("This browser cannot read gzip data.");
   }
 
-  function utf8ToBase64(value) {
-    return bytesToBase64(new TextEncoder().encode(String(value)));
-  }
-
   function bytesToBase64(bytes) {
     if (typeof Buffer !== "undefined") return Buffer.from(bytes).toString("base64");
     let binary = "";
@@ -556,8 +628,8 @@
     }
     return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (character) => {
       const random = Math.floor(Math.random() * 16);
-      const value = character === "x" ? random : (random & 0x3) | 0x8;
-      return value.toString(16);
+      const result = character === "x" ? random : (random & 0x3) | 0x8;
+      return result.toString(16);
     });
   }
 
@@ -568,13 +640,14 @@
   }
 
   return {
-    buildCSharp,
     buildExportDocument,
+    buildNativeSubActions,
     createImportString,
     decodeImportString,
+    getTriggerExportInfo,
     includesCommandTrigger,
     normalizeCommand,
-    toSendKeys,
+    parseKeyboardShortcut,
     validateConfig
   };
 });

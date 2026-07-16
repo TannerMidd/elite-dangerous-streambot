@@ -1329,6 +1329,10 @@
   function renderSetupSteps(allConditions) {
     const steps = [];
     const actionName = state.actionName || "your new action";
+    const exporter = window.StreamerbotActionExport;
+    const triggerInfo = exporter
+      ? exporter.getTriggerExportInfo(buildExporterConfig())
+      : { included: false, label: triggerPath() };
 
     steps.push(`
       <li>
@@ -1338,21 +1342,23 @@
 
     steps.push(`
       <li>
-        <h3>Create the action</h3>
-        <p>Open <strong>Actions &amp; Queues → Actions</strong>, right-click the Actions pane, choose <strong>Add</strong>, and name it <code>${escapeHtml(actionName)}</code>. An <code>Elite Dangerous</code> group is optional but keeps these actions organized.</p>
+        <h3>Import the editable action</h3>
+        <p>Click <strong>Copy Streamer.bot import</strong> above, then open <strong>Streamer.bot → Import → Import String</strong>, paste, and import it. This creates <code>${escapeHtml(actionName)}</code> in the <code>Elite Dangerous</code> group with real, editable Streamer.bot sub-actions.</p>
+        <p>To build it manually instead, open <strong>Actions &amp; Queues → Actions</strong>, right-click the Actions pane, choose <strong>Add</strong>, and use the same action name.</p>
       </li>`);
 
     steps.push(`
       <li>
-        <h3>${state.trigger.type === "external" ? "Connect the ordinary Streamer.bot trigger" : "Attach the Elite Dangerous trigger"}</h3>
+        <h3>${triggerInfo.included ? "Verify the imported trigger" : state.trigger.type === "external" ? "Connect the ordinary Streamer.bot trigger" : "Attach the Elite Dangerous trigger"}</h3>
+        ${triggerInfo.included ? `<p>The import includes <strong>${escapeHtml(triggerInfo.label)}</strong>. Confirm it appears in the action's Triggers pane. To attach or recreate it manually:</p>` : ""}
         ${triggerSetupHtml()}
       </li>`);
 
     if (allConditions.length) {
       steps.push(`
         <li>
-          <h3>Add the If/Else checks in this order</h3>
-          <p>Add the first <strong>Core → Logic → If/Else</strong> at the root of the Sub-Actions pane. For every later row, add another If/Else <strong>inside the previous True Result</strong>. This creates an AND chain: every row must pass.</p>
+          <h3>Verify the editable If/Else checks</h3>
+          <p>The import creates the first real <strong>Core → Logic → If/Else</strong> at the root of the Sub-Actions pane. Every later row is nested <strong>inside the previous True Result</strong>, creating an AND chain in which every row must pass. Use this table to inspect, edit, or manually recreate them.</p>
           <table class="config-table">
             <thead>
               <tr><th>#</th><th>Input</th><th>Operator</th><th>Value</th><th>Auto Type</th><th>Place it</th></tr>
@@ -1375,14 +1381,14 @@
       steps.push(`
         <li>
           <h3>No If/Else is needed</h3>
-          <p>You did not add any conditions, so the selected sub-actions can sit directly in the root of the Sub-Actions pane.</p>
+          <p>You did not add any conditions, so the import places the selected sub-actions directly in the root of the Sub-Actions pane.</p>
         </li>`);
     }
 
     steps.push(`
       <li>
-        <h3>Add the result sub-actions</h3>
-        <p>${allConditions.length ? "Put these inside the final condition's True Result, in this order:" : "Add these directly to the action, in this order:"}</p>
+        <h3>Verify the native result sub-actions</h3>
+        <p>The import creates these as their normal Streamer.bot sub-action types. ${allConditions.length ? "They appear inside the final condition's True Result, in this order:" : "They appear directly in the action, in this order:"}</p>
         <table class="config-table">
           <thead><tr><th>#</th><th>Sub-action</th><th>Settings</th></tr></thead>
           <tbody>
@@ -2113,10 +2119,12 @@
       if (outcome.type === "tts" && !outcome.voiceAlias.trim()) warnings.push(`Sub-action ${number}: enter the Speaker.bot voice alias.`);
       if (outcome.type === "tts" && !outcome.message.trim()) warnings.push(`Sub-action ${number}: enter the text to speak.`);
       if (outcome.type === "chat" && !outcome.message.trim()) warnings.push(`Sub-action ${number}: enter the chat message.`);
+      if (outcome.type === "chat" && outcome.platform === "YouTube" && /%[^%\r\n]+%|~[^~\r\n]+~/.test(outcome.message)) warnings.push(`Sub-action ${number}: YouTube's native Send Message sub-action only supports plain text; remove variables before exporting.`);
       if (outcome.type === "obs" && (!outcome.scene.trim() || !outcome.source.trim())) warnings.push(`Sub-action ${number}: choose both the OBS scene and source.`);
       if (outcome.type === "run-action" && !outcome.actionName.trim()) warnings.push(`Sub-action ${number}: choose the action to run.`);
+      if (outcome.type === "run-action" && outcome.actionName.trim()) warnings.push(`Sub-action ${number}: after importing, open Run Action and select “${outcome.actionName.trim()}”; Streamer.bot action IDs are installation-specific.`);
       if (outcome.type === "keyboard" && !outcome.key.trim()) warnings.push(`Sub-action ${number}: choose the key or shortcut.`);
-      if (outcome.type === "keyboard" && /\b(win|windows|meta|cmd)\b/i.test(outcome.key)) warnings.push(`Sub-action ${number}: Windows-key shortcuts cannot be exported through Streamer.bot's SendKeys method.`);
+      if (outcome.type === "keyboard" && /\b(win|windows|meta|cmd)\b/i.test(outcome.key)) warnings.push(`Sub-action ${number}: Streamer.bot's native Keyboard Press sub-action does not support the Windows-key modifier.`);
       if (outcome.type === "custom" && !outcome.searchName.trim()) warnings.push(`Sub-action ${number}: name the sub-action you want to add.`);
       if (outcome.type === "custom") warnings.push(`Sub-action ${number}: choose a specific sub-action type to create a native Streamer.bot import.`);
     });
@@ -2138,14 +2146,18 @@
     const exporter = window.StreamerbotActionExport;
     if (!elements.importNote || !exporter) return;
 
-    if (exporter.includesCommandTrigger(buildExporterConfig())) {
-      const platform = state.trigger.externalKind === "youtube-command" ? "YouTube" : "Twitch";
-      const command = exporter.normalizeCommand(state.trigger.externalLabel || "");
-      elements.importNote.innerHTML = `<strong>Native import:</strong> Includes the action, generated C# sub-action, and the ${platform} command <code>${escapeHtml(command)}</code>.`;
+    const config = buildExporterConfig();
+    const triggerInfo = exporter.getTriggerExportInfo(config);
+    const actionTargetNote = state.outcomes.some((outcome) => outcome.type === "run-action")
+      ? " Run Action remains editable, but you must select its target after import because action IDs differ between installations."
+      : "";
+
+    if (triggerInfo.included) {
+      elements.importNote.innerHTML = `<strong>Editable native import:</strong> Includes the ${escapeHtml(triggerInfo.label)} trigger. Every condition becomes a real If/Else sub-action, and every result remains editable in Streamer.bot.${escapeHtml(actionTargetNote)}`;
       return;
     }
 
-    elements.importNote.innerHTML = `<strong>Native import:</strong> Includes the complete action and generated C# sub-action. After importing, attach the watcher trigger <code>${escapeHtml(triggerPath())}</code>.`;
+    elements.importNote.innerHTML = `<strong>Editable native import:</strong> Every condition becomes a real If/Else sub-action, and every result remains editable in Streamer.bot. After importing, attach <code>${escapeHtml(triggerPath())}</code>.${escapeHtml(actionTargetNote)}`;
   }
 
   function buildExporterConfig() {
@@ -2185,7 +2197,7 @@
     try {
       const result = await exporter.createImportString(config);
       const successMessage = result.triggerIncluded
-        ? `Streamer.bot import copied with the ${result.command} trigger.`
+        ? `Streamer.bot import copied with the ${result.triggerLabel} trigger.`
         : `Streamer.bot import copied. After importing, attach ${result.manualTriggerPath}.`;
       copyText(result.importString, successMessage);
     } catch (error) {
