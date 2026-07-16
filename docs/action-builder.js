@@ -519,6 +519,7 @@
     usedVariables: document.getElementById("used-variables"),
     availableVariables: document.getElementById("available-variables"),
     copyStatus: document.getElementById("copy-status"),
+    importNote: document.getElementById("import-note"),
     actionName: document.getElementById("action-name")
   };
 
@@ -582,6 +583,7 @@
       volume: "100",
       wait: true,
       message: "",
+      voiceAlias: "",
       platform: "Twitch",
       scene: "",
       source: "",
@@ -897,6 +899,9 @@
       case "insert-variable":
         insertVariable(button);
         break;
+      case "copy-import":
+        copyStreamerbotImport(button);
+        break;
       case "copy-guide":
         copyText(buildGuideText(), "Full setup copied.");
         break;
@@ -952,6 +957,7 @@
     renderSetupSteps(allConditions);
     renderUsedVariables();
     renderAvailableVariables();
+    renderImportNote();
   }
 
   function renderTriggerConfig() {
@@ -1151,6 +1157,10 @@
     switch (outcome.type) {
       case "tts":
         return `
+          <div class="field">
+            <label for="outcome-voice-${outcome.id}">Speaker.bot voice alias</label>
+            <input id="outcome-voice-${outcome.id}" type="text" value="${escapeAttr(outcome.voiceAlias)}" data-outcome-prop="voiceAlias" data-outcome-id="${outcome.id}" placeholder="Example: Amy">
+          </div>
           <div class="field full">
             <label for="outcome-message-${outcome.id}">Text to speak</label>
             <textarea id="outcome-message-${outcome.id}" data-outcome-prop="message" data-outcome-id="${outcome.id}" placeholder="Arrived in %edEvent_StarSystem%.">${escapeHtml(outcome.message)}</textarea>
@@ -1863,7 +1873,10 @@
   function outcomeSettings(outcome) {
     switch (outcome.type) {
       case "tts":
-        return [`Text: ${outcome.message || "(enter text)"}`];
+        return [
+          `Voice alias: ${outcome.voiceAlias || "(enter alias)"}`,
+          `Text: ${outcome.message || "(enter text)"}`
+        ];
       case "chat":
         return [`Message: ${outcome.message || "(enter message)"}`];
       case "obs":
@@ -2050,7 +2063,7 @@
   }
 
   function outcomeTextValues(outcome) {
-    return [outcome.message, outcome.notes, outcome.scene, outcome.source, outcome.actionName, outcome.searchName].filter(Boolean);
+    return [outcome.message, outcome.voiceAlias, outcome.notes, outcome.scene, outcome.source, outcome.actionName, outcome.searchName].filter(Boolean);
   }
 
   function extractTokens(text) {
@@ -2097,12 +2110,15 @@
     state.outcomes.forEach((outcome, index) => {
       const number = index + 1;
       if (outcome.type === "sound" && !outcome.file.trim()) warnings.push(`Sub-action ${number}: choose a sound file.`);
+      if (outcome.type === "tts" && !outcome.voiceAlias.trim()) warnings.push(`Sub-action ${number}: enter the Speaker.bot voice alias.`);
       if (outcome.type === "tts" && !outcome.message.trim()) warnings.push(`Sub-action ${number}: enter the text to speak.`);
       if (outcome.type === "chat" && !outcome.message.trim()) warnings.push(`Sub-action ${number}: enter the chat message.`);
       if (outcome.type === "obs" && (!outcome.scene.trim() || !outcome.source.trim())) warnings.push(`Sub-action ${number}: choose both the OBS scene and source.`);
       if (outcome.type === "run-action" && !outcome.actionName.trim()) warnings.push(`Sub-action ${number}: choose the action to run.`);
       if (outcome.type === "keyboard" && !outcome.key.trim()) warnings.push(`Sub-action ${number}: choose the key or shortcut.`);
+      if (outcome.type === "keyboard" && /\b(win|windows|meta|cmd)\b/i.test(outcome.key)) warnings.push(`Sub-action ${number}: Windows-key shortcuts cannot be exported through Streamer.bot's SendKeys method.`);
       if (outcome.type === "custom" && !outcome.searchName.trim()) warnings.push(`Sub-action ${number}: name the sub-action you want to add.`);
+      if (outcome.type === "custom") warnings.push(`Sub-action ${number}: choose a specific sub-action type to create a native Streamer.bot import.`);
     });
 
     if (state.trigger.type === "journal" && state.trigger.event === "__any__") {
@@ -2116,6 +2132,69 @@
     }
 
     return { errors: uniqueStrings(errors), warnings: uniqueStrings(warnings) };
+  }
+
+  function renderImportNote() {
+    const exporter = window.StreamerbotActionExport;
+    if (!elements.importNote || !exporter) return;
+
+    if (exporter.includesCommandTrigger(buildExporterConfig())) {
+      const platform = state.trigger.externalKind === "youtube-command" ? "YouTube" : "Twitch";
+      const command = exporter.normalizeCommand(state.trigger.externalLabel || "");
+      elements.importNote.innerHTML = `<strong>Native import:</strong> Includes the action, generated C# sub-action, and the ${platform} command <code>${escapeHtml(command)}</code>.`;
+      return;
+    }
+
+    elements.importNote.innerHTML = `<strong>Native import:</strong> Includes the complete action and generated C# sub-action. After importing, attach the watcher trigger <code>${escapeHtml(triggerPath())}</code>.`;
+  }
+
+  function buildExporterConfig() {
+    return {
+      actionName: state.actionName,
+      trigger: { ...state.trigger },
+      triggerPath: triggerPath(),
+      conditions: getAllConditions().map((condition) => ({
+        token: condition.token,
+        operator: condition.operator,
+        value: condition.value,
+        type: condition.type,
+        autoType: condition.autoType
+      })),
+      outcomes: state.outcomes.map(stripId)
+    };
+  }
+
+  async function copyStreamerbotImport(button) {
+    const exporter = window.StreamerbotActionExport;
+    if (!exporter) {
+      announce("The Streamer.bot export helper did not load. Refresh the page and try again.");
+      return;
+    }
+
+    const config = buildExporterConfig();
+    const errors = exporter.validateConfig(config);
+    if (errors.length) {
+      announce(errors[0]);
+      return;
+    }
+
+    const originalText = button.textContent;
+    button.disabled = true;
+    button.textContent = "Building import string...";
+
+    try {
+      const result = await exporter.createImportString(config);
+      const successMessage = result.triggerIncluded
+        ? `Streamer.bot import copied with the ${result.command} trigger.`
+        : `Streamer.bot import copied. After importing, attach ${result.manualTriggerPath}.`;
+      copyText(result.importString, successMessage);
+    } catch (error) {
+      console.error("Could not create Streamer.bot import:", error);
+      announce(error.validationErrors?.[0] || error.message || "Could not create the Streamer.bot import string.");
+    } finally {
+      button.disabled = false;
+      button.textContent = originalText;
+    }
   }
 
   function buildGuideText() {

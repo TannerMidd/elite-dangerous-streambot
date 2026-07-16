@@ -4,8 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Elite Dangerous Streamer.bot Action Builder</title>
-<meta name="description" content="Build a Streamer.bot action for the standalone Elite Dangerous C# journal watcher and get exact triggers, variables, conditions, and step-by-step setup instructions.">
+<meta name="description" content="Build an importable Streamer.bot action for the standalone Elite Dangerous C# journal watcher, with exact triggers, variables, conditions, and setup instructions.">
 <link rel="stylesheet" href="action-builder.css">
+<script src="streamerbot-export.js" defer></script>
 <script src="action-builder.js" defer></script>
 </head>
 <body>
@@ -40,7 +41,7 @@
     <div class="sidebar-note">
       <span class="eyebrow">Built for</span>
       <strong>Standalone C# watcher</strong>
-      <p>This page generates Streamer.bot setup instructions. It does not use the main Elite Streambot app or its YAML rules.</p>
+      <p>This page generates a native Streamer.bot import string and setup instructions. It does not use the main Elite Streambot app or its YAML rules.</p>
     </div>
   </aside>
 
@@ -49,7 +50,7 @@
       <div class="hero-copy">
         <span class="hero-badge">Standalone C# watcher</span>
         <h2>Build a Streamer.bot action without guessing variable names.</h2>
-        <p>Choose what should happen in Elite Dangerous, add any checks, and choose what Streamer.bot should do. The builder outputs the exact trigger path, If/Else values, variable tokens, action tree, and test steps.</p>
+        <p>Choose what should happen in Elite Dangerous, add any checks, and choose what Streamer.bot should do. The builder outputs a native import string plus the exact trigger path, variables, action tree, and test steps.</p>
       </div>
       <div class="hero-example" aria-label="Current build summary">
         <span class="eyebrow">Current recipe</span>
@@ -190,10 +191,13 @@
           </div>
           <p id="preview-summary" class="preview-summary"></p>
           <div id="action-tree" class="action-tree"></div>
+          <p id="import-note" class="import-note"></p>
           <div class="preview-actions">
-            <button type="button" class="button button-primary" data-action="copy-guide">Copy full setup</button>
+            <button type="button" class="button button-primary import-button" data-action="copy-import">Copy Streamer.bot import</button>
+            <button type="button" class="button button-secondary" data-action="copy-guide">Copy setup guide</button>
             <button type="button" class="button button-secondary" data-action="copy-link">Copy share link</button>
           </div>
+          <p class="import-help">Paste the copied string into <strong>Streamer.bot &rarr; Import &rarr; Import String</strong>. <a href="https://docs.streamer.bot/guide/core/import-export">Import guide</a></p>
           <a class="jump-link" href="#setup">See the complete step-by-step setup ↓</a>
           <p id="copy-status" class="copy-status" role="status" aria-live="polite"></p>
         </section>
