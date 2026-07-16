@@ -1,6 +1,6 @@
 {
   "name": "elite-streambot",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Bridge Elite Dangerous journal data to Streamer.bot alerts with a flexible rules engine",
   "license": "MIT",
   "type": "module",

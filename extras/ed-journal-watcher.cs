@@ -106,6 +106,9 @@ public class CPHInline
     private static Thread _worker;
     private static volatile bool _running;
     private static AutoResetEvent _wake;
+    // Bumped on every StartWatcher; a worker whose generation no longer
+    // matches exits, so a join timeout can never leave two workers running.
+    private static int _generation;
     private readonly object _lifecycle = new object();
 
     public void Init()
@@ -141,11 +144,12 @@ public class CPHInline
                 return true;
             }
             _running = true;
+            _generation++;
             _wake = new AutoResetEvent(false);
             _worker = new Thread(Loop);
             _worker.IsBackground = true;
             _worker.Name = "EDJournalWatcher";
-            _worker.Start();
+            _worker.Start(_generation);
         }
         CPH.LogInfo("[ED] Journal watcher started.");
         return true;
@@ -161,7 +165,8 @@ public class CPHInline
             worker = _worker;
             if (_wake != null) { try { _wake.Set(); } catch { } }
         }
-        if (worker != null && worker.IsAlive) worker.Join(3000);
+        if (worker != null && worker.IsAlive && !worker.Join(3000))
+            CPH.LogWarn("[ED] Worker did not stop within 3s; it will exit on its own (superseded by generation check).");
         lock (_lifecycle)
         {
             if (_wake != null) { try { _wake.Dispose(); } catch { } _wake = null; }
@@ -173,25 +178,43 @@ public class CPHInline
     }
 
     /// Forget everything: unset every variable this watcher ever created,
-    /// clear the checkpoint, and start fresh (rehydrates without triggers).
+    /// clear the checkpoint AND the in-memory aggregates/baselines, and start
+    /// fresh (rehydrates without triggers). Resetting the aggregates matters:
+    /// rehydration replays the journal, so stale counters would double-count.
     public bool ResetState()
     {
         StopWatcher();
-        var names = new List<string>(_allNames.Keys);
-        foreach (string name in names) UnsetVar(name);
-        _allNames.Clear();
-        _eventTypes.Clear();
-        _typeFields.Clear();
-        _pending.Clear();
-        _pushed.Clear();
-        UnsetVar(Prefix + "RuntimeVarNamesJson");
-        UnsetVar(Prefix + "RuntimeEventTypesJson");
-        UnsetVar(Prefix + "RuntimeFlagTriggersJson");
-        UnsetVar(Prefix + "RuntimeJournalDir");
-        UnsetVar(Prefix + "RuntimeJournalFile");
-        UnsetVar(Prefix + "RuntimeJournalPos");
-        _file = null;
-        _offset = 0;
+        lock (_stateLock)
+        {
+            var names = new List<string>(_allNames.Keys);
+            foreach (string name in names) UnsetVar(name);
+            _allNames.Clear();
+            _eventTypes.Clear();
+            _typeFields.Clear();
+            _pending.Clear();
+            _pushed.Clear();
+            _eventCounts.Clear();
+            _companionSigs.Clear();
+            _cmdr = _ship = _shipName = _system = _station = _lastEvent = "";
+            _docked = false;
+            _jumps = _credits = _bounties = _bountyEarnings = 0;
+            _missions = _deaths = _interdictions = _scans = _firstDiscoveries = 0;
+            _distanceLy = 0;
+            _lastFlags = -1;
+            _lastFlags2 = -1;
+            _statusBaseline = false;
+            _companionBaseline = false;
+            _namesDirty = false;
+            _capWarned = false;
+            UnsetVar(Prefix + "RuntimeVarNamesJson");
+            UnsetVar(Prefix + "RuntimeEventTypesJson");
+            UnsetVar(Prefix + "RuntimeFlagTriggersJson");
+            UnsetVar(Prefix + "RuntimeJournalDir");
+            UnsetVar(Prefix + "RuntimeJournalFile");
+            UnsetVar(Prefix + "RuntimeJournalPos");
+            _file = null;
+            _offset = 0;
+        }
         CPH.LogInfo("[ED] State reset; the current journal will rehydrate without firing triggers.");
         return StartWatcher();
     }
@@ -314,13 +337,14 @@ public class CPHInline
     }
 
     // ---- main loop ------------------------------------------------------------
-    private void Loop()
+    private void Loop(object generationArg)
     {
+        int myGeneration = (int)generationArg;
         _dir = ResolveJournalDir();
         LoadCheckpoint();
         FireStatus("started", "Watcher started: " + _dir);
 
-        while (_running)
+        while (_running && myGeneration == _generation)
         {
             try
             {
@@ -477,9 +501,12 @@ public class CPHInline
 
         // Drain the current file completely first so a rollover never drops
         // the final lines of the old journal.
-        ReadNewLines();
+        bool drained = ReadNewLines();
         bool wasHydrating = _hydrating;
-        _hydrating = false; // anything after the first full pass is live
+        // Hydration only ends after a pass that actually reached the end of
+        // the file — a transient bail-out (file locked, partial line) must not
+        // turn the remaining historical lines into a live trigger storm.
+        if (drained) _hydrating = false;
 
         string newest = FindNewestJournal();
         if (newest != null && !string.Equals(newest, _file, StringComparison.OrdinalIgnoreCase))
@@ -491,22 +518,24 @@ public class CPHInline
             ReadNewLines(); // a new journal while watching is live from line one
         }
 
-        if (wasHydrating)
+        if (wasHydrating && drained)
             FireStatus("hydrated", "State rebuilt from " + (_file == null ? "?" : Path.GetFileName(_file)));
     }
 
     /// Reads bytes appended since the last pass; only complete lines are
     /// consumed. FileShare.ReadWrite is required — the game keeps the file open.
-    private void ReadNewLines()
+    /// Returns true when the read reached the end of the file's complete
+    /// lines; false on a transient bail-out (missing file, no complete line).
+    private bool ReadNewLines()
     {
-        if (_file == null || !File.Exists(_file)) return;
+        if (_file == null || !File.Exists(_file)) return false;
         var fi = new FileInfo(_file);
         if (fi.Length < _offset)
         {
             CPH.LogWarn("[ED] Journal shrank; rereading " + Path.GetFileName(_file));
             _offset = 0;
         }
-        if (fi.Length == _offset) return;
+        if (fi.Length == _offset) return true;
 
         byte[] buf;
         using (var fs = new FileStream(_file, FileMode.Open, FileAccess.Read,
@@ -515,7 +544,7 @@ public class CPHInline
             fs.Seek(_offset, SeekOrigin.Begin);
             buf = new byte[fs.Length - _offset];
             int read = fs.Read(buf, 0, buf.Length);
-            if (read <= 0) return;
+            if (read <= 0) return false;
             if (read < buf.Length)
             {
                 byte[] trimmed = new byte[read];
@@ -529,7 +558,7 @@ public class CPHInline
         {
             if (buf[i] == (byte)'\n') { lastNl = i; break; }
         }
-        if (lastNl < 0) return; // no complete line yet
+        if (lastNl < 0) return false; // no complete line yet
         _offset += lastNl + 1;
 
         string[] lines = Encoding.UTF8.GetString(buf, 0, lastNl + 1).Split('\n');
@@ -558,6 +587,7 @@ public class CPHInline
             CPH.LogInfo("[ED] " + parsed.Count + " backlogged lines: variables updated, triggers suppressed.");
 
         foreach (JObject e in parsed) ApplyEvent(e, fireTriggers);
+        return true;
     }
 
     // ---- one journal event --------------------------------------------------------
@@ -1011,7 +1041,13 @@ public class CPHInline
             string prev;
             if (_pushed.TryGetValue(kv.Key, out prev) && prev == s) continue;
             try { CPH.SetGlobalVar(kv.Key, kv.Value, true); }
-            catch (Exception ex) { CPH.LogDebug("[ED] SetGlobalVar " + kv.Key + ": " + ex.Message); return; }
+            catch (Exception ex)
+            {
+                CPH.LogDebug("[ED] SetGlobalVar " + kv.Key + ": " + ex.Message);
+                // Re-flag so the aborted name-registry save happens next pass.
+                if (namesDirty) { lock (_stateLock) { _namesDirty = true; } }
+                return;
+            }
             _pushed[kv.Key] = s;
         }
 
