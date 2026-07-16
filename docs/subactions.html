@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Elite Dangerous Sub-Actions — Variable &amp; Trigger Reference</title>
+<meta name="description" content="Complete reference of every trigger argument and global variable the Elite Dangerous journal watcher provides inside Streamer.bot sub-actions.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚀</text></svg>">
+<style>
+  :root {
+    --bg: #0d1017; --panel: #151a24; --panel-2: #1b2130; --border: #262e40;
+    --text: #d7dce6; --muted: #7a8499; --accent: #ff8a2a; --accent-dim: #b35e1a;
+    --good: #4cd97b; --bad: #ff5c5c; --warn: #ffd166;
+    --mono: 'Cascadia Code', 'Consolas', ui-monospace, monospace;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; scroll-padding-top: 20px; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    font-size: 16px; line-height: 1.65;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  .layout { display: flex; max-width: 1200px; margin: 0 auto; }
+
+  aside {
+    width: 250px; flex-shrink: 0; position: sticky; top: 0; height: 100vh;
+    overflow-y: auto; padding: 24px 16px; border-right: 1px solid var(--border);
+  }
+  .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
+  .brand-icon { color: var(--accent); font-size: 24px; }
+  .brand h1 { font-size: 18px; font-weight: 700; letter-spacing: 0.3px; }
+  .brand .accent { color: var(--accent); }
+  nav a {
+    display: block; color: var(--muted); padding: 5px 10px; border-radius: 6px;
+    font-size: 14px; border-left: 2px solid transparent;
+  }
+  nav a:hover { color: var(--text); background: var(--panel); text-decoration: none; }
+  nav a.sub { padding-left: 24px; font-size: 13px; }
+  nav .navgroup { margin-top: 14px; font-size: 11px; text-transform: uppercase;
+    letter-spacing: 1px; color: var(--accent-dim); padding: 0 10px 4px; }
+
+  main { flex: 1; min-width: 0; padding: 40px 48px 120px; }
+  section { margin-bottom: 48px; scroll-margin-top: 20px; }
+  h2 {
+    font-size: 26px; margin-bottom: 16px; padding-bottom: 8px;
+    border-bottom: 1px solid var(--border); font-weight: 700;
+  }
+  h3 { font-size: 18px; margin: 26px 0 10px; color: var(--text); }
+  p { margin-bottom: 14px; }
+  ul, ol { margin: 0 0 14px 22px; }
+  li { margin-bottom: 7px; }
+  strong { color: #fff; }
+
+  .hero {
+    background: linear-gradient(135deg, #1b2130, #10131b);
+    border: 1px solid var(--border); border-radius: 14px;
+    padding: 32px 36px; margin-bottom: 40px;
+  }
+  .hero h2 { border: none; font-size: 30px; margin-bottom: 10px; padding: 0; }
+  .hero p { font-size: 17px; color: var(--muted); margin-bottom: 0; }
+
+  code {
+    font-family: var(--mono); background: var(--panel-2); color: #ffd9b3;
+    padding: 2px 6px; border-radius: 4px; font-size: 0.88em;
+  }
+  pre {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 16px 18px; overflow-x: auto; margin: 0 0 18px; font-size: 14px;
+  }
+  pre code { background: none; color: var(--text); padding: 0; }
+  .k { color: var(--accent); } .s { color: var(--good); } .c { color: var(--muted); font-style: italic; }
+
+  table { width: 100%; border-collapse: collapse; margin: 0 0 18px; font-size: 14.5px; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--accent); font-size: 12px; text-transform: uppercase; letter-spacing: 0.6px; }
+  tr:last-child td { border-bottom: none; }
+  td code { white-space: nowrap; }
+  .wrap td code { white-space: normal; }
+
+  .callout {
+    border-radius: 10px; padding: 14px 18px; margin: 0 0 18px;
+    border-left: 3px solid var(--accent); background: var(--panel);
+  }
+  .callout.tip { border-left-color: var(--good); }
+  .callout.warn { border-left-color: var(--warn); }
+  .callout .label {
+    font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: 0.8px;
+    display: block; margin-bottom: 4px;
+  }
+  .callout.tip .label { color: var(--good); }
+  .callout.warn .label { color: var(--warn); }
+  .callout p:last-child { margin-bottom: 0; }
+
+  .steps { counter-reset: step; list-style: none; margin-left: 0; }
+  .steps > li {
+    counter-increment: step; position: relative; padding-left: 44px; margin-bottom: 16px;
+  }
+  .steps > li::before {
+    content: counter(step); position: absolute; left: 0; top: -2px;
+    width: 30px; height: 30px; border-radius: 50%; background: var(--accent-dim);
+    color: #fff; font-weight: 700; display: flex; align-items: center; justify-content: center;
+    font-size: 15px;
+  }
+
+  .pill {
+    display: inline-block; background: var(--panel-2); border: 1px solid var(--border);
+    border-radius: 20px; padding: 2px 12px; font-size: 13px; color: #ffd9b3;
+    margin: 0 6px 6px 0; font-family: var(--mono);
+  }
+  footer {
+    border-top: 1px solid var(--border); padding: 24px 48px; color: var(--muted);
+    font-size: 14px; max-width: 1200px; margin: 0 auto;
+  }
+  .topbar { display: none; }
+
+  @media (max-width: 820px) {
+    aside { display: none; }
+    main { padding: 24px 20px 80px; }
+    .topbar {
+      display: flex; align-items: center; gap: 10px; padding: 14px 20px;
+      border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--bg); z-index: 10;
+    }
+    .topbar .brand-icon { font-size: 22px; color: var(--accent); }
+    .topbar h1 { font-size: 17px; }
+    .topbar .accent { color: var(--accent); }
+    .hero { padding: 24px; }
+    .hero h2 { font-size: 24px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <span class="brand-icon">◈</span>
+  <h1>Elite <span class="accent">Streambot</span></h1>
+</div>
+
+<div class="layout">
+  <aside>
+    <div class="brand">
+      <span class="brand-icon">◈</span>
+      <h1>Elite <span class="accent">Streambot</span></h1>
+    </div>
+    <nav>
+      <a href="index.html">← Main user guide</a>
+      <div class="navgroup">Fundamentals</div>
+      <a href="#basics">The two kinds of values</a>
+      <a href="#find-names">Finding a field name</a>
+      <div class="navgroup">Trigger arguments</div>
+      <a href="#args-journal">Journal event triggers</a>
+      <a href="#args-flags">Ship State triggers</a>
+      <a href="#args-companion">Companion File Updated</a>
+      <a href="#args-status">Watcher Status</a>
+      <div class="navgroup">Global variables</div>
+      <a href="#vars-identity">Commander &amp; location</a>
+      <a href="#vars-session">Session totals</a>
+      <a href="#vars-flags">Ship flags (live)</a>
+      <a href="#vars-onfoot">On-foot flags (live)</a>
+      <a href="#vars-status">Status.json extras</a>
+      <a href="#vars-nav">Navigation</a>
+      <a href="#vars-mirror">Event mirrors</a>
+      <a href="#vars-files">Companion files</a>
+      <div class="navgroup">Recipes</div>
+      <a href="#recipe-undock">Undock in a specific system</a>
+      <a href="#recipe-tts">TTS with live values</a>
+      <a href="#recipe-command">A !system chat command</a>
+      <a href="#recipe-fuel">Low-fuel klaxon</a>
+      <div class="navgroup">Fine print</div>
+      <a href="#flattening">Flattening rules &amp; limits</a>
+    </nav>
+  </aside>
+
+  <main>
+    <div class="hero">
+      <h2>Sub-Actions &amp; Variables Reference</h2>
+      <p>Every value the <a href="index.html#csharp-watcher">standalone Elite Dangerous journal watcher</a> puts at your fingertips inside Streamer.bot — trigger arguments, live global variables, and how to use them in any sub-action.</p>
+    </div>
+
+    <section id="basics">
+      <h2>The two kinds of values</h2>
+      <p>The watcher hands data to your sub-actions through two different channels. Knowing which is which is the whole game:</p>
+      <table>
+        <tr><th></th><th>Trigger arguments</th><th>Global variables</th></tr>
+        <tr>
+          <td><strong>Syntax</strong></td>
+          <td><code>%edEvent_StarSystem%</code></td>
+          <td><code>~edSystem~</code></td>
+        </tr>
+        <tr>
+          <td><strong>What they are</strong></td>
+          <td>A snapshot of the event that fired the trigger</td>
+          <td>Your live game state, always current</td>
+        </tr>
+        <tr>
+          <td><strong>Available</strong></td>
+          <td>Only inside an action started by a watcher trigger</td>
+          <td>In <em>any</em> action, from <em>any</em> trigger (chat command, hotkey, timer…)</td>
+        </tr>
+        <tr>
+          <td><strong>Where to browse them</strong></td>
+          <td>Not listed in the UI — that's what this page is for</td>
+          <td>Streamer.bot → <strong>(x) Global Variables → Persisted Globals</strong></td>
+        </tr>
+      </table>
+      <p>Both work in almost every sub-action text input — If/Else conditions, TTS text, chat messages, file writers, C# code. Type the token exactly, including the <code>%…%</code> or <code>~…~</code> wrapper.</p>
+      <div class="callout warn">
+        <span class="label">The #1 mistake</span>
+        <p>Typing <code>edSystem</code> (no wrapper) into an If/Else <strong>Input</strong> compares the literal text "edSystem", which never matches anything. Use <code>%edSystem%</code> when the value came with the trigger, or <code>~edSystem~</code> to read the live global from anywhere. All the watcher's globals are <em>persisted</em>, so the tilde syntax always works for them.</p>
+      </div>
+    </section>
+
+    <section id="find-names">
+      <h2>Finding a field name when you're not sure</h2>
+      <p>Journal events carry whatever fields the game writes, so this page can't list every field of every event — but you never have to guess:</p>
+      <ol class="steps">
+        <li><strong>Look at the event mirror.</strong> Open <strong>(x) Global Variables → Persisted Globals</strong> and filter for <code>edEvt</code>. After an event has happened once, every one of its fields sits there by name — e.g. seeing <code>edEvtDocked_StationName</code> tells you the trigger argument is <code>%edEvent_StationName%</code>.</li>
+        <li><strong>Log the raw event.</strong> Bind a throwaway action to <em>Any Journal Event</em> with a single <strong>Core → Logging → Log Information</strong> sub-action whose message is <code>%edEventName%: %edEventJson%</code>. Play for a minute, then read the Streamer.bot log — every field name is right there in the JSON.</li>
+        <li><strong>Check Frontier's journal manual.</strong> The <a href="https://elite-journal.readthedocs.io/">community-hosted journal documentation</a> lists each event's fields; prefix any field with <code>edEvent_</code> to get the argument name.</li>
+      </ol>
+    </section>
+
+    <section id="args-journal">
+      <h2>Trigger arguments — journal event triggers</h2>
+      <p>Fired by <em>Elite Dangerous → Any Journal Event</em> and every <em>Elite Dangerous → Journal Events → &lt;Name&gt;</em> trigger. Both deliver the same arguments:</p>
+      <table>
+        <tr><th>Argument</th><th>Holds</th></tr>
+        <tr><td><code>%edEventName%</code></td><td>the event type, e.g. <code>FSDJump</code></td></tr>
+        <tr><td><code>%edEventTimestamp%</code></td><td>the event's in-game UTC timestamp</td></tr>
+        <tr><td><code>%edEventJson%</code></td><td>the complete raw event as JSON (capped at 4,000 chars)</td></tr>
+        <tr><td><code>%edEvent_&lt;Field&gt;%</code></td><td>every field of the event, one argument each</td></tr>
+      </table>
+      <h3>Worked examples</h3>
+      <table class="wrap">
+        <tr><th>Trigger</th><th>Typical arguments you'd use</th></tr>
+        <tr><td><em>FSDJump</em></td><td><code>%edEvent_StarSystem%</code>, <code>%edEvent_JumpDist%</code>, <code>%edEvent_FuelUsed%</code></td></tr>
+        <tr><td><em>Docked</em></td><td><code>%edEvent_StationName%</code>, <code>%edEvent_StationType%</code>, <code>%edEvent_StarSystem%</code></td></tr>
+        <tr><td><em>Bounty</em></td><td><code>%edEvent_TotalReward%</code>, <code>%edEvent_Target_Localised%</code>, <code>%edEvent_VictimFaction%</code></td></tr>
+        <tr><td><em>MissionCompleted</em></td><td><code>%edEvent_Reward%</code>, <code>%edEvent_LocalisedName%</code>, <code>%edEvent_DestinationSystem%</code></td></tr>
+        <tr><td><em>Scan</em></td><td><code>%edEvent_BodyName%</code>, <code>%edEvent_PlanetClass%</code>, <code>%edEvent_TerraformState%</code>, <code>%edEvent_WasDiscovered%</code></td></tr>
+        <tr><td><em>ReceiveText</em></td><td><code>%edEvent_From%</code>, <code>%edEvent_Message_Localised%</code>, <code>%edEvent_Channel%</code></td></tr>
+      </table>
+      <div class="callout tip">
+        <span class="label">Nested fields</span>
+        <p>Fields inside sub-objects join with underscores: FSDJump's <code>SystemFaction.Name</code> arrives as <code>%edEvent_SystemFaction_Name%</code>. Arrays arrive as a count plus JSON — see <a href="#flattening">flattening rules</a>.</p>
+      </div>
+    </section>
+
+    <section id="args-flags">
+      <h2>Trigger arguments — Ship State triggers</h2>
+      <p>Fired by every <em>Elite Dangerous → Ship State → &lt;Flag&gt; On/Off</em> trigger and by <em>Any Ship Flag Changed</em>:</p>
+      <table>
+        <tr><th>Argument</th><th>Holds</th></tr>
+        <tr><td><code>%edFlag%</code></td><td>the flag that changed, e.g. <code>LandingGearDown</code></td></tr>
+        <tr><td><code>%edValue%</code></td><td><code>True</code> or <code>False</code> — the flag's new state</td></tr>
+        <tr><td><code>%edSystem%</code></td><td>the star system you're in when it changed</td></tr>
+      </table>
+      <p>The full list of flags (each one is both a pair of triggers <em>and</em> a live global variable) is under <a href="#vars-flags">Ship flags</a> and <a href="#vars-onfoot">On-foot flags</a> below.</p>
+    </section>
+
+    <section id="args-companion">
+      <h2>Trigger arguments — Companion File Updated</h2>
+      <p>Fired when the game rewrites one of its side files (Cargo.json, NavRoute.json, Market.json, Backpack.json, ShipLocker.json, ModulesInfo.json, …):</p>
+      <table>
+        <tr><th>Argument</th><th>Holds</th></tr>
+        <tr><td><code>%edCompanionName%</code></td><td>which file, e.g. <code>Cargo</code></td></tr>
+        <tr><td><code>%edCompanionFile%</code></td><td>the file name, e.g. <code>Cargo.json</code></td></tr>
+        <tr><td><code>%edCompanionJson%</code></td><td>the file's full contents as JSON (capped at 4,000 chars)</td></tr>
+      </table>
+    </section>
+
+    <section id="args-status">
+      <h2>Trigger arguments — Watcher Status</h2>
+      <p>Fired when the watcher itself changes state — useful for a startup confirmation sound or an error alert:</p>
+      <table>
+        <tr><th>Argument</th><th>Holds</th></tr>
+        <tr><td><code>%edStatus%</code></td><td>one of <code>started</code> · <code>stopped</code> · <code>hydrated</code> · <code>journal_changed</code> · <code>error</code></td></tr>
+        <tr><td><code>%edMessage%</code></td><td>a human-readable detail line</td></tr>
+        <tr><td><code>%edJournalFile%</code></td><td>the journal file currently being watched</td></tr>
+      </table>
+    </section>
+
+    <section id="vars-identity">
+      <h2>Globals — commander &amp; location</h2>
+      <p>Everything from here down is a <strong>persisted global variable</strong>: read it in any sub-action input as <code>~name~</code>, or browse live values under <strong>(x) Global Variables → Persisted Globals</strong>.</p>
+      <table>
+        <tr><th>Variable</th><th>Holds</th></tr>
+        <tr><td><code>~edCmdr~</code></td><td>commander name</td></tr>
+        <tr><td><code>~edShip~</code></td><td>ship model, e.g. <code>Anaconda</code></td></tr>
+        <tr><td><code>~edShipName~</code></td><td>the name you gave your ship</td></tr>
+        <tr><td><code>~edSystem~</code></td><td>current star system</td></tr>
+        <tr><td><code>~edStation~</code></td><td>current station (empty when not docked)</td></tr>
+        <tr><td><code>~edLastEvent~</code></td><td>name of the most recent journal event</td></tr>
+      </table>
+    </section>
+
+    <section id="vars-session">
+      <h2>Globals — session totals</h2>
+      <p>Running totals since the current play session's journal began (rebuilt automatically on restart):</p>
+      <table>
+        <tr><th>Variable</th><th>Holds</th></tr>
+        <tr><td><code>~edJumps~</code></td><td>hyperspace jumps</td></tr>
+        <tr><td><code>~edDistanceLy~</code></td><td>light-years travelled</td></tr>
+        <tr><td><code>~edCreditsEarned~</code></td><td>credits earned (bounties, missions, sales, exploration)</td></tr>
+        <tr><td><code>~edBounties~</code> / <code>~edBountyEarnings~</code></td><td>bounty count / bounty credits</td></tr>
+        <tr><td><code>~edMissionsCompleted~</code></td><td>missions turned in</td></tr>
+        <tr><td><code>~edDeaths~</code></td><td>ship losses</td></tr>
+        <tr><td><code>~edInterdictions~</code></td><td>times interdicted</td></tr>
+        <tr><td><code>~edBodiesScanned~</code> / <code>~edFirstDiscoveries~</code></td><td>bodies scanned / first discoveries among them</td></tr>
+      </table>
+    </section>
+
+    <section id="vars-flags">
+      <h2>Globals — ship flags (live true/false)</h2>
+      <p>Each is a live boolean global <em>and</em> an On/Off trigger pair under <em>Ship State</em>. Prefix with <code>ed</code>: the flag <code>Docked</code> is the global <code>~edDocked~</code>.</p>
+      <p>
+        <span class="pill">Docked</span><span class="pill">Landed</span><span class="pill">LandingGearDown</span><span class="pill">ShieldsUp</span><span class="pill">Supercruise</span><span class="pill">FlightAssistOff</span><span class="pill">HardpointsDeployed</span><span class="pill">InWing</span><span class="pill">LightsOn</span><span class="pill">CargoScoopDeployed</span><span class="pill">SilentRunning</span><span class="pill">ScoopingFuel</span><span class="pill">SrvHandbrake</span><span class="pill">SrvUsingTurretView</span><span class="pill">SrvTurretRetracted</span><span class="pill">SrvDriveAssist</span><span class="pill">FsdMassLocked</span><span class="pill">FsdCharging</span><span class="pill">FsdCooldown</span><span class="pill">LowFuel</span><span class="pill">Overheating</span><span class="pill">HasLatLong</span><span class="pill">InDanger</span><span class="pill">BeingInterdicted</span><span class="pill">InMainShip</span><span class="pill">InFighter</span><span class="pill">InSRV</span><span class="pill">AnalysisMode</span><span class="pill">NightVision</span><span class="pill">AltitudeFromAverageRadius</span><span class="pill">FsdJump</span><span class="pill">SrvHighBeam</span>
+      </p>
+    </section>
+
+    <section id="vars-onfoot">
+      <h2>Globals — on-foot flags (live true/false)</h2>
+      <p>Odyssey on-foot state, same pattern (<code>~edOnFoot~</code>, triggers <em>OnFoot On/Off</em>, …):</p>
+      <p>
+        <span class="pill">OnFoot</span><span class="pill">InTaxi</span><span class="pill">InMulticrew</span><span class="pill">OnFootInStation</span><span class="pill">OnFootOnPlanet</span><span class="pill">AimDownSight</span><span class="pill">LowOxygen</span><span class="pill">LowHealth</span><span class="pill">Cold</span><span class="pill">Hot</span><span class="pill">VeryCold</span><span class="pill">VeryHot</span><span class="pill">GlideMode</span><span class="pill">OnFootInHangar</span><span class="pill">OnFootSocialSpace</span><span class="pill">OnFootExterior</span><span class="pill">BreathableAtmosphere</span><span class="pill">TelepresenceMulticrew</span><span class="pill">PhysicalMulticrew</span><span class="pill">FsdHyperdriveCharging</span>
+      </p>
+    </section>
+
+    <section id="vars-status">
+      <h2>Globals — Status.json extras</h2>
+      <p>Live cockpit state beyond the flags, refreshed about once a second while the game runs:</p>
+      <table>
+        <tr><th>Variable</th><th>Holds</th></tr>
+        <tr><td><code>~edPipsSys~</code> / <code>~edPipsEng~</code> / <code>~edPipsWep~</code></td><td>power pips (0–4, halves allowed)</td></tr>
+        <tr><td><code>~edFireGroup~</code></td><td>selected fire group (0-based)</td></tr>
+        <tr><td><code>~edGuiFocus~</code> / <code>~edGuiFocusName~</code></td><td>focused panel — number and name: <code>NoFocus</code>, <code>InternalPanel</code>, <code>ExternalPanel</code>, <code>CommsPanel</code>, <code>RolePanel</code>, <code>StationServices</code>, <code>GalaxyMap</code>, <code>SystemMap</code>, <code>Orrery</code>, <code>FSS</code>, <code>SAA</code>, <code>Codex</code></td></tr>
+        <tr><td><code>~edFuelLevel~</code> / <code>~edFuelReservoir~</code></td><td>main tank / reservoir, in tons</td></tr>
+        <tr><td><code>~edCargoTons~</code></td><td>cargo carried, in tons</td></tr>
+        <tr><td><code>~edLegalState~</code></td><td><code>Clean</code>, <code>Wanted</code>, <code>Speeding</code>, …</td></tr>
+        <tr><td><code>~edBalance~</code></td><td>credit balance</td></tr>
+        <tr><td><code>~edLatitude~</code> / <code>~edLongitude~</code> / <code>~edHeading~</code> / <code>~edAltitude~</code></td><td>position near a body</td></tr>
+        <tr><td><code>~edBodyName~</code> / <code>~edPlanetRadius~</code></td><td>body being approached / landed on</td></tr>
+        <tr><td><code>~edOxygen~</code> / <code>~edHealth~</code> / <code>~edTemperature~</code> / <code>~edGravity~</code></td><td>on-foot vitals (0–1 for oxygen/health)</td></tr>
+        <tr><td><code>~edSelectedWeapon~</code></td><td>currently drawn weapon/tool</td></tr>
+        <tr><td><code>~edDestinationName~</code> / <code>~edDestinationSystem~</code> / <code>~edDestinationBody~</code></td><td>locked destination</td></tr>
+      </table>
+      <div class="callout tip">
+        <span class="label">Position &amp; vitals only exist sometimes</span>
+        <p>Latitude/longitude appear only near a body, and oxygen/health/temperature only on foot — the game omits them otherwise, so the variables simply keep their last value. Gate on <code>~edHasLatLong~</code> or <code>~edOnFoot~</code> if it matters.</p>
+      </div>
+    </section>
+
+    <section id="vars-nav">
+      <h2>Globals — navigation</h2>
+      <table>
+        <tr><th>Variable</th><th>Holds</th></tr>
+        <tr><td><code>~edNavTargetSystem~</code></td><td>next system on your plotted route</td></tr>
+        <tr><td><code>~edNavDestination~</code></td><td>final system of the route</td></tr>
+        <tr><td><code>~edNavRemainingJumps~</code></td><td>jumps left to the destination</td></tr>
+      </table>
+    </section>
+
+    <section id="vars-mirror">
+      <h2>Globals — event mirrors</h2>
+      <p>Every journal event is also mirrored into globals, so the <em>latest occurrence</em> of anything is always readable — even from actions that weren't triggered by it:</p>
+      <table class="wrap">
+        <tr><th>Pattern</th><th>Example</th><th>Holds</th></tr>
+        <tr><td><code>~edEvt&lt;Name&gt;Count~</code></td><td><code>~edEvtBountyCount~</code></td><td>how many times the event occurred this session</td></tr>
+        <tr><td><code>~edEvt&lt;Name&gt;Last~</code></td><td><code>~edEvtBountyLast~</code></td><td>timestamp of the latest occurrence</td></tr>
+        <tr><td><code>~edEvt&lt;Name&gt;_&lt;Field&gt;~</code></td><td><code>~edEvtBounty_TotalReward~</code></td><td>each field of the latest occurrence</td></tr>
+      </table>
+      <p>Fields that the newest occurrence doesn't have are removed automatically, so you never read a stale leftover from a differently-shaped earlier event.</p>
+    </section>
+
+    <section id="vars-files">
+      <h2>Globals — companion files</h2>
+      <p>Each companion file's top-level fields are flattened to <code>~edFile&lt;Name&gt;_&lt;Field&gt;~</code> — e.g. <code>~edFileCargo_Count~</code>, <code>~edFileMarket_StationName~</code>, <code>~edFileBackpack_Items~</code>. Two convenience extras:</p>
+      <table>
+        <tr><th>Variable</th><th>Holds</th></tr>
+        <tr><td><code>~edCargoUsed~</code></td><td>cargo units used (from Cargo.json)</td></tr>
+        <tr><td><code>~edNavRemainingJumps~</code> / <code>~edNavDestination~</code></td><td>also refreshed from NavRoute.json whenever you plot a route</td></tr>
+      </table>
+    </section>
+
+    <section id="recipe-undock">
+      <h2>Recipe — do something when undocking in a specific system</h2>
+      <ol class="steps">
+        <li>Create an action; right-click its <strong>Triggers</strong> → <strong>Custom → Elite Dangerous → Ship State → Docked Off</strong>.</li>
+        <li>Add <strong>Core → Logic → If/Else</strong>: Input <code>%edSystem%</code> · Operation <code>Equals</code> · Value <code>Shinrarta Dezhra</code>.</li>
+        <li>Streamer.bot adds <strong>True Result</strong> and <strong>False Result</strong> groups under the If/Else. Put your sub-actions (key press, sound, chat line…) <em>inside True Result</em>; leave False Result empty.</li>
+      </ol>
+      <div class="callout tip">
+        <span class="label">Why %edSystem% and not ~edSystem~ here?</span>
+        <p>Both actually work in this action — the flag trigger delivers <code>%edSystem%</code> as an argument, and <code>~edSystem~</code> reads the same value from the live global. Prefer the argument when the trigger provides one; reach for the tilde when it doesn't.</p>
+      </div>
+    </section>
+
+    <section id="recipe-tts">
+      <h2>Recipe — a TTS line with live values</h2>
+      <p>Trigger: <em>Journal Events → FSDJump</em>. Add a <strong>Speaker.bot → Speak</strong> (or any TTS) sub-action with the message:</p>
+      <pre><code>Arrived in <span class="k">%edEvent_StarSystem%</span> — jump <span class="k">~edJumps~</span> of the session, <span class="k">~edNavRemainingJumps~</span> to go.</code></pre>
+      <p>Arguments and globals mix freely in one input — the argument holds the jump you just made, the tildes read your running totals.</p>
+    </section>
+
+    <section id="recipe-command">
+      <h2>Recipe — a !system chat command</h2>
+      <p>Because globals work from <em>any</em> trigger, your Elite state is usable in ordinary Twitch commands:</p>
+      <ol class="steps">
+        <li>Create a Streamer.bot <strong>Command</strong> <code>!system</code> pointing at a new action.</li>
+        <li>Add a <strong>Twitch → Chat → Send Message to Channel</strong> sub-action:</li>
+      </ol>
+      <pre><code>CMDR <span class="k">~edCmdr~</span> is in <span class="k">~edSystem~</span> flying a <span class="k">~edShip~</span> — <span class="k">~edJumps~</span> jumps and <span class="k">~edCreditsEarned~</span> credits this session.</code></pre>
+      <p>No Elite trigger involved — the watcher keeps those globals current in the background.</p>
+    </section>
+
+    <section id="recipe-fuel">
+      <h2>Recipe — low-fuel klaxon</h2>
+      <ol class="steps">
+        <li>Create an action; trigger: <strong>Custom → Elite Dangerous → Ship State → LowFuel On</strong>.</li>
+        <li>Add <strong>Core → Sounds → Play Sound</strong> with your klaxon file. Done — the game raises the flag at 25% main tank.</li>
+      </ol>
+      <p>Want your own threshold instead? Trigger on <em>Journal Events → FSDJump</em> and If/Else on <code>%edEvent_FuelLevel%</code> <code>&lt;</code> your number.</p>
+    </section>
+
+    <section id="flattening">
+      <h2>Fine print — flattening rules &amp; limits</h2>
+      <ul>
+        <li><strong>Nested objects</strong> flatten with underscores up to two levels deep (<code>%edEvent_SystemFaction_Name%</code>); anything deeper arrives as a JSON string.</li>
+        <li><strong>Arrays</strong> publish a <code>…Count</code> value (e.g. <code>%edEvent_RouteCount%</code>) plus the array itself as JSON when it fits in 400 characters.</li>
+        <li><strong>Field names are sanitized</strong> to letters, digits, and underscores — punctuation in a journal field name is dropped.</li>
+        <li><strong>Numbers</strong>: floats are rounded to 4 decimal places; long strings are truncated at 400 characters; the full-event <code>%edEventJson%</code> is capped at 4,000.</li>
+        <li><strong>Booleans</strong> arrive as <code>True</code>/<code>False</code> — with Auto Type on, If/Else compares them fine against <code>True</code>.</li>
+        <li><strong>Variable cap</strong>: the watcher stops creating <em>new</em> variable names at 5,000 (existing ones keep updating); a warning appears in the log if that ever happens.</li>
+        <li><strong>Localised fields</strong>: many events have both a raw and a <code>_Localised</code> field (e.g. <code>Target</code> and <code>Target_Localised</code>) — prefer the localised one for anything shown on stream.</li>
+      </ul>
+    </section>
+  </main>
+</div>
+
+<footer>
+  Part of the <a href="index.html">Elite Streambot user guide</a> · <a href="https://github.com/TannerMidd/elite-dangerous-streambot">GitHub</a> · Not affiliated with Frontier Developments.
+</footer>
+
+</body>
+</html>
