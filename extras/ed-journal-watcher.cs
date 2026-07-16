@@ -13,8 +13,9 @@
 //     Elite Dangerous > Any Journal Event          every live journal line
 //     Elite Dangerous > Journal Events > <Name>    one trigger per event type
 //                                                  (FSDJump, Docked, Bounty, ...
-//                                                  registered automatically as
-//                                                  each type is first seen)
+//                                                  200+ known events registered
+//                                                  at startup; anything new is
+//                                                  added as it is first seen)
 //     Elite Dangerous > Ship State > <Flag> On/Off one trigger per flag edge
 //                                                  (LandingGearDown Off -> your
 //                                                  "press L" action, natively)
@@ -41,7 +42,9 @@
 //   ROBUSTNESS
 //     - Checkpoint/resume: the exact byte position survives Streamer.bot
 //       restarts — no reprocessing, no duplicate trigger storms. First run
-//       hydrates state from the newest journal WITHOUT firing triggers.
+//       hydrates state WITHOUT firing triggers, starting from the newest
+//       journal that contains a real play session (menu-only stub journals
+//       are skipped) and chaining forward through every newer journal.
 //     - Scans once per second; journal rollover drains the old file before
 //       switching to the new one; mid-write files are retried.
 //     - A large offline backlog (Streamer.bot closed while you played)
@@ -102,6 +105,96 @@ public class CPHInline
     private static readonly Guid SavedGamesGuid =
         new Guid("4C5C32FF-BB9D-43B0-B5B4-2D72E54EAAA4");
 
+    // Hydration looks back through this many journals for a real play
+    // session (one with LoadGame) — the newest journal is often a stub from
+    // opening the game to the main menu and quitting.
+    private const int HydrateLookback = 25;
+    private const int HydrateProbeBytes = 65536; // LoadGame sits near the top
+
+    // Known journal event types, pre-registered at startup so every trigger
+    // is bindable in the menu before the event ever occurs. Unknown events
+    // (e.g. from future game patches) still register as they are first seen.
+    private static readonly string[] KnownEventTypes =
+    {
+        // startup / session
+        "Cargo", "ClearSavedGame", "Commander", "EngineerProgress", "Fileheader",
+        "LoadGame", "Loadout", "Materials", "Missions", "NewCommander",
+        "Passengers", "Powerplay", "Progress", "Rank", "Reputation", "Shutdown",
+        "SquadronStartup", "Statistics",
+        // travel
+        "ApproachBody", "ApproachSettlement", "CarrierJump", "Docked",
+        "DockingCancelled", "DockingDenied", "DockingGranted", "DockingRequested",
+        "DockingTimeout", "FSDJump", "FSDTarget", "LeaveBody", "Liftoff",
+        "Location", "NavRoute", "NavRouteClear", "StartJump",
+        "SupercruiseDestinationDrop", "SupercruiseEntry", "SupercruiseExit",
+        "Touchdown", "Undocked",
+        // combat
+        "Bounty", "CapShipBond", "Died", "EscapeInterdiction", "FactionKillBond",
+        "FighterDestroyed", "FighterRebuilt", "HeatDamage", "HeatWarning",
+        "HullDamage", "Interdicted", "Interdiction", "PVPKill", "ShieldState",
+        "ShipTargeted", "SRVDestroyed", "UnderAttack",
+        // exploration
+        "BuyExplorationData", "CodexEntry", "DiscoveryScan", "FSSAllBodiesFound",
+        "FSSBodySignals", "FSSDiscoveryScan", "FSSSignalDiscovered",
+        "MaterialCollected", "MaterialDiscarded", "MaterialDiscovered",
+        "MultiSellExplorationData", "NavBeaconScan", "SAAScanComplete",
+        "SAASignalsFound", "Scan", "ScanBaryCentre", "Screenshot",
+        "SellExplorationData",
+        // trade & mining
+        "AsteroidCracked", "BuyTradeData", "CollectCargo", "EjectCargo",
+        "MarketBuy", "MarketSell", "MiningRefined",
+        // station services
+        "BuyAmmo", "BuyDrones", "CargoDepot", "ClearImpound", "CommunityGoal",
+        "CommunityGoalDiscard", "CommunityGoalJoin", "CommunityGoalReward",
+        "CrewAssign", "CrewFire", "CrewHire", "EngineerContribution",
+        "EngineerCraft", "FetchRemoteModule", "Market", "MassModuleStore",
+        "MaterialTrade", "MissionAbandoned", "MissionAccepted",
+        "MissionCompleted", "MissionFailed", "MissionRedirected", "ModuleBuy",
+        "ModuleRetrieve", "ModuleSell", "ModuleSellRemote", "ModuleStore",
+        "ModuleSwap", "Outfitting", "PayBounties", "PayFines", "RedeemVoucher",
+        "RefuelAll", "RefuelPartial", "Repair", "RepairAll", "RestockVehicle",
+        "ScientificResearch", "SearchAndRescue", "SellDrones", "SetUserShipName",
+        "Shipyard", "ShipyardBuy", "ShipyardNew", "ShipyardSell", "ShipyardSwap",
+        "ShipyardTransfer", "StoredModules", "StoredShips", "TechnologyBroker",
+        // powerplay
+        "PowerplayCollect", "PowerplayDefect", "PowerplayDeliver",
+        "PowerplayFastTrack", "PowerplayJoin", "PowerplayLeave",
+        "PowerplaySalary", "PowerplayVote", "PowerplayVoucher",
+        // squadrons
+        "AppliedToSquadron", "DisbandedSquadron", "InvitedToSquadron",
+        "JoinedSquadron", "KickedFromSquadron", "LeftSquadron",
+        "SquadronCreated", "SquadronDemotion", "SquadronPromotion",
+        // fleet carriers
+        "CarrierBankTransfer", "CarrierBuy", "CarrierCancelDecommission",
+        "CarrierCrewServices", "CarrierDecommission", "CarrierDepositFuel",
+        "CarrierDockingPermission", "CarrierFinance", "CarrierJumpCancelled",
+        "CarrierJumpRequest", "CarrierModulePack", "CarrierNameChange",
+        "CarrierShipPack", "CarrierStats", "CarrierTradeOrder",
+        // on foot (Odyssey)
+        "Backpack", "BackpackChange", "BookDropship", "BookTaxi",
+        "BuyMicroResources", "BuySuit", "BuyWeapon", "CancelDropship",
+        "CancelTaxi", "CollectItems", "CreateSuitLoadout", "DeleteSuitLoadout",
+        "Disembark", "DropItems", "DropshipDeploy", "Embark", "FCMaterials",
+        "LoadoutEquipModule", "LoadoutRemoveModule", "RenameSuitLoadout",
+        "ScanOrganic", "SellMicroResources", "SellOrganicData", "SellSuit",
+        "SellWeapon", "ShipLocker", "SuitLoadout", "SwitchSuitLoadout",
+        "TradeMicroResources", "TransferMicroResources", "UpgradeSuit",
+        "UpgradeWeapon", "UseConsumable",
+        // everything else
+        "AfmuRepairs", "CargoTransfer", "ChangeCrewRole", "CockpitBreached",
+        "CommitCrime", "Continued", "CrewLaunchFighter", "CrewMemberJoins",
+        "CrewMemberQuits", "CrewMemberRoleChange", "CrimeVictim", "DatalinkScan",
+        "DatalinkVoucher", "DataScanned", "DockFighter", "DockSRV",
+        "EndCrewSession", "Friends", "FuelScoop", "JetConeBoost",
+        "JetConeDamage", "JoinACrew", "KickCrewMember", "LaunchDrone",
+        "LaunchFighter", "LaunchSRV", "ModuleInfo", "Music", "NpcCrewPaidWage",
+        "NpcCrewRank", "Promotion", "ProspectedAsteroid", "QuitACrew",
+        "RebootRepair", "ReceiveText", "RepairDrone", "ReservoirReplenished",
+        "Resurrect", "SelfDestruct", "SendText", "Synthesis", "SystemsShutdown",
+        "USSDrop", "VehicleSwitch", "WingAdd", "WingInvite", "WingJoin",
+        "WingLeave",
+    };
+
     // ---- lifecycle ---------------------------------------------------------
     private static Thread _worker;
     private static volatile bool _running;
@@ -114,6 +207,10 @@ public class CPHInline
     public void Init()
     {
         RegisterStaticTriggers();
+        // Seed the known-event catalog, then the persisted registry on top —
+        // ReRegisterDynamicTriggers makes all of them bindable immediately.
+        for (int i = 0; i < KnownEventTypes.Length; i++)
+            _eventTypes[KnownEventTypes[i]] = true;
         LoadRegistries();
         ReRegisterDynamicTriggers();
 
@@ -190,6 +287,8 @@ public class CPHInline
             foreach (string name in names) UnsetVar(name);
             _allNames.Clear();
             _eventTypes.Clear();
+            for (int i = 0; i < KnownEventTypes.Length; i++)
+                _eventTypes[KnownEventTypes[i]] = true;
             _typeFields.Clear();
             _pending.Clear();
             _pushed.Clear();
@@ -440,9 +539,11 @@ public class CPHInline
         }
         else
         {
-            // First run (or the folder changed): rebuild state from the newest
-            // journal without firing a trigger for every historical line.
-            _file = FindNewestJournal();
+            // First run (or the folder changed): rebuild state without firing
+            // a trigger for every historical line. Start from the newest
+            // journal that holds a real play session — the newest file is
+            // often a menu-only stub — and chain forward to the newest.
+            _file = FindHydrationStart();
             _offset = 0;
             _hydrating = _file != null;
             if (_file != null)
@@ -486,6 +587,93 @@ public class CPHInline
         catch (UnauthorizedAccessException) { return null; }
     }
 
+    /// The journal that follows `current` chronologically (write time, name
+    /// as tie-break, matching FindNewestJournal), or null if none is newer.
+    private string FindNextJournal(string current)
+    {
+        DateTime curTime;
+        try { curTime = File.GetLastWriteTimeUtc(current); }
+        catch (IOException) { return null; }
+        try
+        {
+            string[] files = Directory.GetFiles(_dir, "Journal.*.log");
+            string best = null;
+            DateTime bestTime = DateTime.MinValue;
+            foreach (string f in files)
+            {
+                if (string.Equals(f, current, StringComparison.OrdinalIgnoreCase)) continue;
+                DateTime t;
+                try { t = File.GetLastWriteTimeUtc(f); }
+                catch (IOException) { continue; }
+                bool afterCurrent = t > curTime
+                    || (t == curTime && string.Compare(f, current, StringComparison.OrdinalIgnoreCase) > 0);
+                if (!afterCurrent) continue;
+                if (best == null
+                    || t < bestTime
+                    || (t == bestTime && string.Compare(f, best, StringComparison.OrdinalIgnoreCase) < 0))
+                {
+                    best = f;
+                    bestTime = t;
+                }
+            }
+            return best;
+        }
+        catch (IOException) { return null; }
+        catch (UnauthorizedAccessException) { return null; }
+    }
+
+    /// Where first-run hydration starts: the newest journal that contains a
+    /// real play session (a LoadGame event), looking back a bounded number of
+    /// files. Falls back to the newest journal when no session is found.
+    private string FindHydrationStart()
+    {
+        try
+        {
+            string[] files = Directory.GetFiles(_dir, "Journal.*.log");
+            if (files.Length == 0) return null;
+
+            // Sort ascending by (write time, name) via composite string keys.
+            string[] keys = new string[files.Length];
+            for (int i = 0; i < files.Length; i++)
+            {
+                DateTime t;
+                try { t = File.GetLastWriteTimeUtc(files[i]); }
+                catch (IOException) { t = DateTime.MinValue; }
+                keys[i] = t.Ticks.ToString("D19", System.Globalization.CultureInfo.InvariantCulture)
+                    + "|" + files[i].ToUpperInvariant();
+            }
+            Array.Sort(keys, files, StringComparer.Ordinal);
+
+            int scanned = 0;
+            for (int i = files.Length - 1; i >= 0 && scanned < HydrateLookback; i--, scanned++)
+                if (ProbeForSession(files[i])) return files[i];
+            return files[files.Length - 1]; // newest
+        }
+        catch (IOException) { return null; }
+        catch (UnauthorizedAccessException) { return null; }
+    }
+
+    /// True when the head of the file contains a LoadGame event — i.e. the
+    /// journal covers a real session, not just a visit to the main menu.
+    private static bool ProbeForSession(string path)
+    {
+        try
+        {
+            using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read,
+                                           FileShare.ReadWrite | FileShare.Delete))
+            {
+                int len = (int)Math.Min(fs.Length, (long)HydrateProbeBytes);
+                if (len <= 0) return false;
+                byte[] buf = new byte[len];
+                int read = fs.Read(buf, 0, len);
+                if (read <= 0) return false;
+                string head = Encoding.UTF8.GetString(buf, 0, read);
+                return head.IndexOf("\"event\":\"LoadGame\"", StringComparison.Ordinal) >= 0;
+            }
+        }
+        catch { return false; }
+    }
+
     // ---- journal processing -----------------------------------------------------
     private void ProcessJournal()
     {
@@ -499,24 +687,27 @@ public class CPHInline
             FireStatus("journal_changed", Path.GetFileName(_file));
         }
 
-        // Drain the current file completely first so a rollover never drops
-        // the final lines of the old journal.
+        // Drain the current file completely, then chain through newer journals
+        // one at a time — a rollover never drops the old file's final lines,
+        // and multi-file hydration never skips a journal in between. While
+        // live (not hydrating), lines in a new journal fire triggers normally.
         bool drained = ReadNewLines();
-        bool wasHydrating = _hydrating;
-        // Hydration only ends after a pass that actually reached the end of
-        // the file — a transient bail-out (file locked, partial line) must not
-        // turn the remaining historical lines into a live trigger storm.
-        if (drained) _hydrating = false;
-
-        string newest = FindNewestJournal();
-        if (newest != null && !string.Equals(newest, _file, StringComparison.OrdinalIgnoreCase))
+        while (drained)
         {
-            _file = newest;
+            string next = FindNextJournal(_file);
+            if (next == null) break;
+            _file = next;
             _offset = 0;
-            CPH.LogInfo("[ED] Switching to " + Path.GetFileName(newest));
-            FireStatus("journal_changed", Path.GetFileName(newest));
-            ReadNewLines(); // a new journal while watching is live from line one
+            CPH.LogInfo("[ED] Switching to " + Path.GetFileName(next));
+            FireStatus("journal_changed", Path.GetFileName(next));
+            drained = ReadNewLines();
         }
+
+        bool wasHydrating = _hydrating;
+        // Hydration only ends after reaching the end of the newest journal —
+        // a transient bail-out (file locked, partial line) must not turn the
+        // remaining historical lines into a live trigger storm.
+        if (drained) _hydrating = false;
 
         if (wasHydrating && drained)
             FireStatus("hydrated", "State rebuilt from " + (_file == null ? "?" : Path.GetFileName(_file)));

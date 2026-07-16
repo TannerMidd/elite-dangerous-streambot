@@ -365,7 +365,7 @@
       <table>
         <tr><th>Trigger</th><th>Fires when</th><th>Useful arguments</th></tr>
         <tr><td><em>Elite Dangerous → Journal Events → FSDJump / Docked / Bounty / …</em></td>
-            <td>that specific event happens (one trigger per event type, added automatically as each type is first seen — including events from future game patches)</td>
+            <td>that specific event happens (one trigger per event type — 200+ known events are in the menu from the moment the watcher starts, and anything new, including events from future game patches, is added automatically when first seen)</td>
             <td><code>%edEventName%</code>, <code>%edEventJson%</code>, every field as <code>%edEvent_&lt;Field&gt;%</code> (e.g. <code>%edEvent_StarSystem%</code>)</td></tr>
         <tr><td><em>Elite Dangerous → Ship State → LandingGearDown Off / HardpointsDeployed On / …</em></td>
             <td>a ship flag changes, one trigger per direction</td>
@@ -380,9 +380,9 @@
         <span class="label">Example — "when my landing gear comes up, press L"</span>
         <p>Create an action → right-click its Triggers → <strong>Custom → Elite Dangerous → Ship State →
         LandingGearDown Off</strong> → add whatever sub-actions you like (a key press, a sound, a chat line).
-        That's the entire setup. All Ship State triggers (every flag, On and Off) are in the menu from the moment
-        the watcher starts; the per-event-type triggers under <em>Journal Events</em> appear once that event has
-        been seen at least once and are remembered across Streamer.bot restarts.</p>
+        That's the entire setup. All Ship State triggers (every flag, On and Off) and 200+ known
+        <em>Journal Events</em> triggers are in the menu from the moment the watcher starts; anything the game
+        adds later appears once it has been seen and is remembered across Streamer.bot restarts.</p>
       </div>
 
       <h3>Variables, same as the app's sync — and then some</h3>
@@ -400,9 +400,10 @@
       <ul>
         <li><strong>Checkpoint/resume</strong> — it remembers its exact position in the journal, so restarting
           Streamer.bot never replays old events as triggers and never loses new ones.</li>
-        <li><strong>First run is quiet</strong> — it rebuilds state from your current journal without firing a
-          trigger for every historical line, and a big offline backlog updates variables while suppressing the
-          trigger flood.</li>
+        <li><strong>First run is quiet</strong> — it rebuilds state from your latest play session without firing
+          a trigger for every historical line (menu-only stub journals are skipped, so your commander, ship, and
+          location come from the last time you actually played), and a big offline backlog updates variables
+          while suppressing the trigger flood.</li>
         <li><strong>Steady + safe</strong> — it checks the journal once a second (negligible load); journal
           rollovers and mid-write files are handled.</li>
       </ul>
