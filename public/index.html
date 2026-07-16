@@ -21,8 +21,19 @@
         <span class="dot"></span> Streamer.bot
       </div>
       <button id="open-settings" class="btn" title="Connection settings">⚙ Settings</button>
+      <button id="quit-app" class="btn btn-quit" title="Stop the app and shut down the server">⏻ Quit</button>
     </div>
   </header>
+
+  <!-- Shown after the server has been stopped. -->
+  <div id="stopped-overlay" class="overlay hidden">
+    <div class="stopped-card">
+      <div class="stopped-icon">⏻</div>
+      <h2>SimStarr Elite Data has stopped</h2>
+      <p>The server is no longer running. You can safely close this browser tab.</p>
+      <p class="hint">To use it again, start the app (SimStarrEliteData.exe) and reopen this page.</p>
+    </div>
+  </div>
 
   <main>
     <aside class="col col-left">

@@ -726,10 +726,35 @@
         case 'status': renderStatus(data.data); break;
         case 'rules': renderRules(data.data); break;
         case 'dispatch': addDispatch(data.data); break;
+        case 'quitting': showStopped(); break;
       }
     };
-    ws.onclose = () => setTimeout(connect, 2000);
+    ws.onclose = () => {
+      // If the server went away right after a quit, don't try to reconnect —
+      // show the stopped screen instead.
+      if (quitting) return;
+      setTimeout(connect, 2000);
+    };
   }
+
+  // ---- quit ------------------------------------------------------------
+  let quitting = false;
+
+  function showStopped() {
+    quitting = true;
+    document.getElementById('stopped-overlay').classList.remove('hidden');
+  }
+
+  $('#quit-app').addEventListener('click', async () => {
+    if (!confirm('Stop SimStarr Elite Data? Alerts will no longer fire until you start the app again.')) return;
+    quitting = true;
+    try {
+      await api('/api/quit', { method: 'POST' });
+    } catch {
+      /* the server may drop the connection before responding — that's fine */
+    }
+    showStopped();
+  });
 
   // ---- boot ------------------------------------------------------------
   api('/api/status').then(renderStatus).catch(console.error);

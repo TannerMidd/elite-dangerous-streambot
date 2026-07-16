@@ -53,8 +53,12 @@ async function main(): Promise<void> {
     return record;
   };
 
+  // Forward reference so the server's Quit endpoint can trigger the shutdown
+  // defined below (it needs `server`, which startServer returns).
+  let quit: () => Promise<void> = async () => process.exit(0);
   const { server, broadcastDispatch } = startServer({
     root: ROOT, config, watcher, session, engine, streamerbot, dispatchLog, fireRule,
+    onQuit: () => void quit(),
   });
 
   watcher.on('event', (pe: PipelineEvent) => {
@@ -86,16 +90,23 @@ async function main(): Promise<void> {
   streamerbot.start();
   await watcher.start();
 
+  let shuttingDown = false;
   const shutdown = async () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
     console.log('\nShutting down…');
     streamerbot.stop();
     await engine.stop();
     await watcher.stop();
     server.close();
-    process.exit(0);
+    // Give the HTTP response / log a moment to flush, then exit.
+    setTimeout(() => process.exit(0), 150);
   };
+  quit = shutdown;
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
+
+  console.log('\nTo stop the app: click "Quit" in the dashboard, press Ctrl+C here, or close this window.\n');
 }
 
 main().catch((err) => {

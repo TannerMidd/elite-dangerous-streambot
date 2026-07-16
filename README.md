@@ -19,7 +19,7 @@ Built for streamers: set it up once, leave it running, and your alerts react to 
 - **Visual rule builder** — build or edit rules entirely in the dashboard: type-ahead event names, friendly condition rows with field suggestions taken from your own journal history, Streamer.bot action auto-complete, a plain-English readback, and a YAML preview. Builder and hand-edited files are interchangeable.
 - **Session stats** — running totals (jumps, distance, credits earned, bounties, deaths, first discoveries, …) available to conditions and templates for stateful alerts like *every 10th jump* or *death #N this stream*.
 - **Robust Streamer.bot link** — auto-reconnect with backoff, an outbox that queues alerts while Streamer.bot is down (flushed on reconnect, stale alerts dropped), and per-request response tracking so a rejected action shows up red in the dashboard with the reason instead of failing silently.
-- **Dashboard** — live event inspector (click any event for its raw JSON, or spin a rule straight from it), rule toggles and test-fire buttons, dispatch log, session panel, and an event **simulator** so you can test the entire alert chain without launching the game.
+- **Dashboard** — live event inspector (click any event for its raw JSON, or spin a rule straight from it), rule toggles and test-fire buttons, dispatch log, session panel, an event **simulator** so you can test the entire alert chain without launching the game, and a **Quit** button that shuts the server down gracefully.
 - **10 preset rules + generated alert sounds** included out of the box.
 
 ## Quick start
@@ -44,6 +44,8 @@ npm start
 4. Test everything from the **Simulator** panel or a rule's **Test** button — no game needed. Executions appear in Streamer.bot's *Action History* with all variables attached.
 
 Click the title in the dashboard header to rename the app to whatever fits your stream.
+
+**To stop the app**, click **⏻ Quit** in the top-right of the dashboard (or close the console window). Quit shuts the server down gracefully and shows a confirmation page.
 
 ## Writing rules
 

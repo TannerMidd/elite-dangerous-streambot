@@ -26,6 +26,8 @@ export interface ServerDeps {
   dispatchLog: DispatchRecord[];
   /** Test-fire path used by the API; shares dispatch logic with the live pipeline. */
   fireRule: (rule: LoadedRule, args: Record<string, string>) => DispatchRecord;
+  /** Gracefully stop the whole app (invoked by the dashboard Quit button). */
+  onQuit: () => void;
 }
 
 function ruleView(rule: LoadedRule) {
@@ -91,6 +93,15 @@ export function startServer(deps: ServerDeps): RunningServer {
   });
 
   app.get('/api/status', (_req, res) => res.json(statusPayload()));
+
+  // Graceful shutdown from the dashboard Quit button. Respond first, then
+  // stop — otherwise the browser sees a dropped connection instead of "ok".
+  app.post('/api/quit', (_req, res) => {
+    res.json({ ok: true });
+    console.log('[ui] Quit requested from the dashboard.');
+    broadcast({ type: 'quitting' });
+    setTimeout(() => deps.onQuit(), 200);
+  });
 
   // ---- settings ---------------------------------------------------------
   app.get('/api/config', (_req, res) => {
