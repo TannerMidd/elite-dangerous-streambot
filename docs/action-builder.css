@@ -73,6 +73,16 @@ code {
   padding: 2px 6px;
 }
 
+.sr-only {
+  clip: rect(0, 0, 0, 0);
+  clip-path: inset(50%);
+  height: 1px;
+  overflow: hidden;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}
+
 .layout {
   display: flex;
   margin: 0 auto;
@@ -601,6 +611,85 @@ textarea::placeholder {
   color: var(--bad);
 }
 
+.logic-mode-panel {
+  align-items: center;
+  background: linear-gradient(110deg, rgba(104, 168, 255, 0.09), rgba(104, 168, 255, 0.025));
+  border: 1px solid rgba(104, 168, 255, 0.24);
+  border-radius: 9px;
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+  margin-bottom: 13px;
+  padding: 12px 14px;
+}
+
+.logic-mode-panel > div {
+  min-width: 0;
+}
+
+.logic-mode-panel strong,
+.logic-mode-panel > div > span:last-child {
+  display: block;
+}
+
+.logic-mode-panel strong {
+  font-size: 13.5px;
+}
+
+.logic-mode-panel > div > span:last-child {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+  margin-top: 2px;
+}
+
+.logic-mode-panel label {
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+.logic-mode-panel select {
+  min-width: 152px;
+}
+
+.logic-kicker {
+  color: var(--info);
+  display: block;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.11em;
+  margin-bottom: 2px;
+  text-transform: uppercase;
+}
+
+.logic-connector {
+  align-items: center;
+  display: flex;
+  gap: 9px;
+  margin: -3px 0;
+}
+
+.logic-connector::before,
+.logic-connector::after {
+  background: #303a4e;
+  content: "";
+  flex: 1;
+  height: 1px;
+}
+
+.logic-connector span {
+  background: var(--panel-2);
+  border: 1px solid #3c4962;
+  border-radius: 999px;
+  color: var(--info);
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  padding: 5px 9px;
+}
+
 .condition-grid {
   display: grid;
   gap: 11px;
@@ -645,6 +734,120 @@ textarea::placeholder {
 
 .check-row input {
   accent-color: var(--accent);
+}
+
+.branch-result-heading,
+.branch-builder-heading,
+.decision-branch-heading {
+  align-items: center;
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+}
+
+.branch-result-heading {
+  margin: 18px 0 10px;
+}
+
+.branch-result-heading.is-primary {
+  margin-top: 0;
+}
+
+.branch-result-heading strong {
+  font-size: 13.5px;
+}
+
+.branch-result-heading > span:last-child {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.branch-badge {
+  background: rgba(104, 168, 255, 0.1);
+  border: 1px solid rgba(104, 168, 255, 0.28);
+  border-radius: 999px;
+  color: var(--info);
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  padding: 6px 9px;
+}
+
+.branch-badge.is-then {
+  background: rgba(76, 217, 123, 0.08);
+  border-color: rgba(76, 217, 123, 0.28);
+  color: var(--good);
+}
+
+.branch-badge.is-else {
+  background: rgba(255, 138, 42, 0.08);
+  border-color: rgba(255, 138, 42, 0.3);
+  color: var(--accent-bright);
+}
+
+.branch-condition-list,
+.branch-outcome-list {
+  display: grid;
+  gap: 12px;
+}
+
+.branch-builder {
+  border-top: 1px solid var(--border);
+  margin-top: 19px;
+  padding-top: 18px;
+}
+
+.branch-builder-heading {
+  align-items: start;
+  margin-bottom: 13px;
+}
+
+.branch-builder-heading strong,
+.decision-branch-heading strong {
+  display: block;
+  color: #fff;
+  font-size: 14px;
+}
+
+.branch-builder-heading p,
+.decision-branch-heading p {
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.45;
+  margin-top: 2px;
+}
+
+.branch-builder-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.decision-branch {
+  background: rgba(13, 16, 23, 0.43);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--info);
+  border-radius: 10px;
+  margin-top: 13px;
+  padding: 15px;
+}
+
+.decision-branch.is-else {
+  border-left-color: var(--accent);
+}
+
+.decision-branch-heading {
+  align-items: start;
+  margin-bottom: 13px;
+}
+
+.branch-add-button {
+  margin-top: 12px;
 }
 
 .outcome-fields {
@@ -1246,6 +1449,26 @@ footer {
 
   .condition-custom {
     grid-template-columns: 1fr;
+  }
+
+  .logic-mode-panel,
+  .branch-builder-heading,
+  .decision-branch-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .logic-mode-panel label,
+  .logic-mode-panel select {
+    width: 100%;
+  }
+
+  .branch-builder-actions {
+    width: 100%;
+  }
+
+  .branch-builder-actions .button {
+    flex: 1 1 150px;
   }
 
   .section-heading {

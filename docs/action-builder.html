@@ -98,6 +98,11 @@
           <strong>Command while docked</strong>
           <span>From a chat command, check Docked and Station using live globals.</span>
         </button>
+        <button type="button" class="preset-card" data-preset="location-chain">
+          <span class="preset-kicker">OR + Else-if</span>
+          <strong>Station, body, or system</strong>
+          <span>Reply with the most specific current location using native OR and Else-if branches.</span>
+        </button>
       </div>
     </section>
 
@@ -157,7 +162,7 @@
             <span class="step-number">2</span>
             <div>
               <h2>What must be true?</h2>
-              <p>Conditions are optional. Every condition you add must pass, so the generated guide nests each If/Else inside the previous True Result.</p>
+              <p>Conditions are optional. Choose whether every condition must pass (AND) or any condition may pass (OR).</p>
             </div>
           </div>
 
@@ -171,12 +176,11 @@
             <span class="step-number">3</span>
             <div>
               <h2>What should Streamer.bot do?</h2>
-              <p>Add one or more sub-actions. Text fields can include any trigger argument or persisted global shown in the generated variable list.</p>
+              <p>Add the THEN results, followed by optional Else-if and Else branches. Every branch imports as editable native Streamer.bot sub-actions.</p>
             </div>
           </div>
 
           <div id="outcomes-list" class="stack-list"></div>
-          <button type="button" class="button button-secondary" data-action="add-outcome">+ Add sub-action</button>
         </section>
       </div>
 

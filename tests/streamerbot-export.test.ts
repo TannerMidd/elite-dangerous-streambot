@@ -64,6 +64,19 @@ function collectSubActions(items: Record<string, any>[]): Record<string, any>[] 
   ]);
 }
 
+function condition(
+  token: string,
+  operator = 'Equals',
+  value = 'True',
+  type = 'boolean',
+) {
+  return { token, operator, value, type, autoType: true };
+}
+
+function twitchMessage(message: string) {
+  return { type: 'chat', platform: 'Twitch', message };
+}
+
 test('builds nested editable If/Else groups and native outcome sub-actions', () => {
   const document = exporter.buildExportDocument(config());
   const action = document.data.actions[0];
@@ -94,6 +107,86 @@ test('builds nested editable If/Else groups and native outcome sub-actions', () 
   const everySubAction = collectSubActions(action.subActions);
   assert.ok(!everySubAction.some((item) => item.type === 99999));
   assert.ok(!JSON.stringify(document).includes('byteCode'));
+});
+
+test('builds an editable OR chain through successive False Result groups', () => {
+  const document = exporter.buildExportDocument(config({
+    conditions: undefined,
+    outcomes: undefined,
+    branches: [{
+      mode: 'any',
+      conditions: [
+        condition('~edDocked~'),
+        condition('~edOnFootInStation~'),
+        condition('~edOnFootSocialSpace~'),
+      ],
+      outcomes: [twitchMessage('At ~edStation~')],
+    }],
+  }));
+  const first = document.data.actions[0].subActions[0];
+  const second = first.subActions[1].subActions[0];
+  const third = second.subActions[1].subActions[0];
+
+  assert.equal(first.type, 120);
+  assert.equal(second.type, 120);
+  assert.equal(third.type, 120);
+  assert.equal(second.parentId, first.subActions[1].id);
+  assert.equal(third.parentId, second.subActions[1].id);
+  assert.deepEqual(first.subActions[0].subActions.map((item: Record<string, any>) => item.type), [10]);
+  assert.deepEqual(second.subActions[0].subActions.map((item: Record<string, any>) => item.type), [10]);
+  assert.deepEqual(third.subActions[0].subActions.map((item: Record<string, any>) => item.type), [10]);
+  assert.deepEqual(third.subActions[1].subActions, []);
+});
+
+test('builds IF, ELSE IF, and ELSE branches with branch-specific outcomes', () => {
+  const document = exporter.buildExportDocument(config({
+    conditions: undefined,
+    outcomes: undefined,
+    automaticConditions: [
+      condition('%edStatus%', 'Equals (Ignore Case)', 'started', 'string'),
+    ],
+    branches: [
+      {
+        mode: 'all',
+        conditions: [
+          condition('~edDocked~'),
+          condition('~edStation~', 'Equals (Ignore Case)', 'Jameson Memorial', 'string'),
+        ],
+        outcomes: [{ type: 'sound', file: 'C:\\Sounds\\station.wav', wait: true, volume: 100 }],
+      },
+      {
+        mode: 'any',
+        conditions: [
+          condition('~edHasLatLong~'),
+          condition('~edOnFootOnPlanet~'),
+        ],
+        outcomes: [twitchMessage('Near ~edBodyName~')],
+      },
+    ],
+    elseOutcomes: [{ type: 'keyboard', key: 'F1' }],
+  }));
+  const automatic = document.data.actions[0].subActions[0];
+  const firstIf = automatic.subActions[0].subActions[0];
+  const secondAnd = firstIf.subActions[0].subActions[0];
+  const firstConditionFailureElseIf = firstIf.subActions[1].subActions[0];
+  const firstElseIf = secondAnd.subActions[1].subActions[0];
+  const secondElseIf = firstElseIf.subActions[1].subActions[0];
+
+  assert.equal(automatic.input, '%edStatus%');
+  assert.deepEqual(automatic.subActions[1].subActions, []);
+  assert.equal(firstIf.input, '~edDocked~');
+  assert.equal(secondAnd.input, '~edStation~');
+  assert.equal(firstConditionFailureElseIf.input, '~edHasLatLong~');
+  assert.deepEqual(secondAnd.subActions[0].subActions.map((item: Record<string, any>) => item.type), [1]);
+  assert.equal(firstElseIf.input, '~edHasLatLong~');
+  assert.equal(secondElseIf.input, '~edOnFootOnPlanet~');
+  assert.deepEqual(firstElseIf.subActions[0].subActions.map((item: Record<string, any>) => item.type), [10]);
+  assert.deepEqual(secondElseIf.subActions[0].subActions.map((item: Record<string, any>) => item.type), [10]);
+  assert.deepEqual(secondElseIf.subActions[1].subActions.map((item: Record<string, any>) => item.type), [1012]);
+
+  const everySubAction = collectSubActions(document.data.actions[0].subActions);
+  assert.ok(!everySubAction.some((item) => item.type === 99999));
+  assert.equal(new Set(everySubAction.map((item) => item.id)).size, everySubAction.length);
 });
 
 test('round-trips an SBAE import string and includes native command data', async () => {
@@ -156,6 +249,26 @@ test('rejects options that cannot be represented as editable native sub-actions'
   assert.ok(errors.some((error) => error.includes('YouTube')));
   assert.ok(errors.some((error) => error.includes('Windows-key')));
   assert.ok(errors.some((error) => error.includes('specific supported sub-action')));
+});
+
+test('validates every decision branch and requires a primary IF condition', () => {
+  const errors = exporter.validateConfig(config({
+    conditions: undefined,
+    outcomes: undefined,
+    branches: [
+      { mode: 'all', conditions: [], outcomes: [twitchMessage('Always')] },
+      {
+        mode: 'all',
+        conditions: [condition('not-wrapped')],
+        outcomes: [{ type: 'custom' }],
+      },
+    ],
+    elseOutcomes: [twitchMessage('Fallback')],
+  }));
+
+  assert.ok(errors.some((error) => error.includes('IF branch')));
+  assert.ok(errors.some((error) => error.includes('Else-if 1 condition 1')));
+  assert.ok(errors.some((error) => error.includes('Else-if 1 sub-action 1')));
 });
 
 test('maps native Keyboard Press key and modifier values', () => {

@@ -575,6 +575,19 @@
     };
   }
 
+  function normalizeCondition(rawCondition) {
+    const condition = rawCondition && typeof rawCondition === "object" ? rawCondition : {};
+    return {
+      id: uid(),
+      variableKey: String(condition.variableKey || "global:edSystem"),
+      customName: String(condition.customName || "").slice(0, 180),
+      customType: ["string", "number", "boolean"].includes(condition.customType) ? condition.customType : "string",
+      operator: String(condition.operator || "Equals (Ignore Case)"),
+      value: String(condition.value ?? "").slice(0, 1000),
+      autoType: condition.autoType !== false
+    };
+  }
+
   function newOutcome(type = "sound") {
     return {
       id: uid(),
@@ -592,6 +605,16 @@
       key: "",
       searchName: "",
       notes: ""
+    };
+  }
+
+  function normalizeOutcome(rawOutcome) {
+    const outcome = rawOutcome && typeof rawOutcome === "object" ? rawOutcome : {};
+    return {
+      ...newOutcome(),
+      ...outcome,
+      id: uid(),
+      type: OUTCOME_TYPES.some((item) => item.value === outcome.type) ? outcome.type : "custom"
     };
   }
 
@@ -659,6 +682,37 @@
           outcomes: [outcome]
         };
       }
+      case "location-chain": {
+        const docked = newCondition("global:edDocked", "Equals", "True");
+        const onFootInStation = newCondition("global:edOnFootInStation", "Equals", "True");
+        const hasLatLong = newCondition("global:edHasLatLong", "Equals", "True");
+        const onFootOnPlanet = newCondition("global:edOnFootOnPlanet", "Equals", "True");
+        const stationOutcome = newOutcome("chat");
+        const bodyOutcome = newOutcome("chat");
+        const systemOutcome = newOutcome("chat");
+        stationOutcome.message = "CMDR ~edCmdr~ is at ~edStation~ in ~edSystem~.";
+        bodyOutcome.message = "CMDR ~edCmdr~ is near ~edBodyName~ in ~edSystem~.";
+        systemOutcome.message = "CMDR ~edCmdr~ is in ~edSystem~.";
+        return {
+          version: 2,
+          actionName: "ED Current Location Command",
+          trigger: defaultTrigger({
+            type: "external",
+            externalKind: "twitch-command",
+            externalLabel: "!location"
+          }),
+          conditionMode: "any",
+          conditions: [docked, onFootInStation],
+          outcomes: [stationOutcome],
+          elseIfBranches: [{
+            id: uid(),
+            mode: "any",
+            conditions: [hasLatLong, onFootOnPlanet],
+            outcomes: [bodyOutcome]
+          }],
+          elseOutcomes: [systemOutcome]
+        };
+      }
       case "docked-station":
       default: {
         const condition = newCondition("arg:edEvent_StationName", "Equals (Ignore Case)", "Jameson Memorial");
@@ -680,7 +734,7 @@
       state = createPreset("docked-station");
     }
 
-    state.version = 1;
+    state.version = 2;
     state.actionName = typeof state.actionName === "string" ? state.actionName.slice(0, 120) : "";
     state.trigger = {
       ...defaultTrigger(),
@@ -701,27 +755,34 @@
     }
     state.trigger.externalLabel = String(state.trigger.externalLabel || "").slice(0, 160);
 
-    state.conditions = Array.isArray(state.conditions) ? state.conditions.slice(0, 8) : [];
-    state.conditions = state.conditions.map((condition) => ({
-      id: uid(),
-      variableKey: String(condition.variableKey || "global:edSystem"),
-      customName: String(condition.customName || "").slice(0, 180),
-      customType: ["string", "number", "boolean"].includes(condition.customType) ? condition.customType : "string",
-      operator: String(condition.operator || "Equals (Ignore Case)"),
-      value: String(condition.value ?? "").slice(0, 1000),
-      autoType: condition.autoType !== false
-    }));
+    state.conditionMode = state.conditionMode === "any" ? "any" : "all";
+    state.conditions = (Array.isArray(state.conditions) ? state.conditions : [])
+      .slice(0, 8)
+      .map(normalizeCondition);
 
-    state.outcomes = Array.isArray(state.outcomes) ? state.outcomes.slice(0, 8) : [];
-    state.outcomes = state.outcomes.map((rawOutcome) => {
-      const outcome = rawOutcome && typeof rawOutcome === "object" ? rawOutcome : {};
-      return {
-        ...newOutcome(),
-        ...outcome,
-        id: uid(),
-        type: OUTCOME_TYPES.some((item) => item.value === outcome.type) ? outcome.type : "custom"
-      };
-    });
+    state.outcomes = (Array.isArray(state.outcomes) ? state.outcomes : [])
+      .slice(0, 8)
+      .map(normalizeOutcome);
+
+    state.elseIfBranches = (Array.isArray(state.elseIfBranches) ? state.elseIfBranches : [])
+      .slice(0, 4)
+      .map((rawBranch) => {
+        const branch = rawBranch && typeof rawBranch === "object" ? rawBranch : {};
+        return {
+          id: uid(),
+          mode: branch.mode === "any" ? "any" : "all",
+          conditions: (Array.isArray(branch.conditions) ? branch.conditions : [])
+            .slice(0, 6)
+            .map(normalizeCondition),
+          outcomes: (Array.isArray(branch.outcomes) ? branch.outcomes : [])
+            .slice(0, 6)
+            .map(normalizeOutcome)
+        };
+      });
+
+    state.elseOutcomes = (Array.isArray(state.elseOutcomes) ? state.elseOutcomes : [])
+      .slice(0, 6)
+      .map(normalizeOutcome);
 
     if (state.outcomes.length === 0) state.outcomes.push(newOutcome("custom"));
   }
@@ -789,6 +850,20 @@
       return;
     }
 
+    if (target.matches("[data-logic-mode]")) {
+      if (target.dataset.logicMode === "primary") {
+        state.conditionMode = target.value === "any" ? "any" : "all";
+      } else {
+        const branch = findElseIfBranch(target.dataset.logicMode);
+        if (branch) branch.mode = target.value === "any" ? "any" : "all";
+      }
+      activePreset = null;
+      renderConditions();
+      renderOutcomes();
+      renderOutputs();
+      return;
+    }
+
     if (target.matches("[data-condition-variable]")) {
       const condition = findCondition(target.dataset.conditionId);
       if (!condition) return;
@@ -798,6 +873,7 @@
       condition.value = resolved.type === "boolean" ? "True" : resolved.type === "number" ? "0" : "";
       activePreset = null;
       renderConditions();
+      renderOutcomes();
       renderOutputs();
       return;
     }
@@ -810,8 +886,10 @@
         condition.operator = defaultOperator(condition.customType);
         condition.value = condition.customType === "boolean" ? "True" : condition.customType === "number" ? "0" : "";
         renderConditions();
+        renderOutcomes();
       } else if (target.dataset.conditionProp === "operator") {
         renderConditions();
+        renderOutcomes();
       }
       activePreset = null;
       renderOutputs();
@@ -845,6 +923,7 @@
 
     if (button.dataset.preset) {
       state = createPreset(button.dataset.preset);
+      normalizeState();
       activePreset = button.dataset.preset;
       eventSearchTerm = "";
       renderAll();
@@ -855,6 +934,7 @@
     switch (button.dataset.action) {
       case "reset-builder":
         state = createPreset("docked-station");
+        normalizeState();
         activePreset = "docked-station";
         eventSearchTerm = "";
         renderAll();
@@ -871,9 +951,10 @@
         renderOutputs();
         break;
       case "remove-condition":
-        state.conditions = state.conditions.filter((item) => String(item.id) !== button.dataset.conditionId);
+        removeConditionById(button.dataset.conditionId);
         activePreset = null;
         renderConditions();
+        renderOutcomes();
         renderOutputs();
         break;
       case "add-outcome":
@@ -886,12 +967,89 @@
         renderOutcomes();
         renderOutputs();
         break;
-      case "remove-outcome":
-        if (state.outcomes.length === 1) {
+      case "remove-outcome": {
+        const outcomeCollection = findOutcomeCollection(button.dataset.outcomeId);
+        if (!outcomeCollection) return;
+        if (outcomeCollection.length === 1) {
           announce("Keep at least one sub-action in the build.");
           return;
         }
-        state.outcomes = state.outcomes.filter((item) => String(item.id) !== button.dataset.outcomeId);
+        removeOutcomeById(button.dataset.outcomeId);
+        activePreset = null;
+        renderOutcomes();
+        renderOutputs();
+        break;
+      }
+      case "add-else-if": {
+        if (state.elseIfBranches.length >= 4) {
+          announce("This builder supports up to four Else-if branches.");
+          return;
+        }
+        if (!state.conditions.length) state.conditions.push(defaultConditionForTrigger());
+        state.elseIfBranches.push({
+          id: uid(),
+          mode: "all",
+          conditions: [defaultConditionForTrigger()],
+          outcomes: [newOutcome("custom")]
+        });
+        activePreset = null;
+        renderConditions();
+        renderOutcomes();
+        renderOutputs();
+        break;
+      }
+      case "remove-else-if":
+        state.elseIfBranches = state.elseIfBranches.filter((branch) => String(branch.id) !== button.dataset.branchId);
+        activePreset = null;
+        renderOutcomes();
+        renderOutputs();
+        break;
+      case "add-branch-condition": {
+        const branch = findElseIfBranch(button.dataset.branchId);
+        if (!branch) return;
+        if (branch.conditions.length >= 6) {
+          announce("Each Else-if branch supports up to six conditions.");
+          return;
+        }
+        branch.conditions.push(defaultConditionForTrigger());
+        activePreset = null;
+        renderOutcomes();
+        renderOutputs();
+        break;
+      }
+      case "add-branch-outcome": {
+        const branch = findElseIfBranch(button.dataset.branchId);
+        if (!branch) return;
+        if (branch.outcomes.length >= 6) {
+          announce("Each Else-if branch supports up to six sub-actions.");
+          return;
+        }
+        branch.outcomes.push(newOutcome("custom"));
+        activePreset = null;
+        renderOutcomes();
+        renderOutputs();
+        break;
+      }
+      case "add-else-branch":
+        if (!state.conditions.length) state.conditions.push(defaultConditionForTrigger());
+        state.elseOutcomes = [newOutcome("custom")];
+        activePreset = null;
+        renderConditions();
+        renderOutcomes();
+        renderOutputs();
+        break;
+      case "add-else-outcome":
+        if (state.elseOutcomes.length >= 6) {
+          announce("The Else branch supports up to six sub-actions.");
+          return;
+        }
+        state.elseOutcomes.push(newOutcome("custom"));
+        activePreset = null;
+        renderOutcomes();
+        renderOutputs();
+        break;
+      case "remove-else-branch":
+        state.elseOutcomes = [];
         activePreset = null;
         renderOutcomes();
         renderOutputs();
@@ -1073,34 +1231,66 @@
 
     elements.automaticConditions.innerHTML = automatic.map((condition) => `
       <div class="automatic-condition">
-        <strong>Automatic filter:</strong>
+        <strong>Required automatic filter:</strong>
         <code>${escapeHtml(condition.token)}</code>
         <span>${escapeHtml(condition.operator)}</span>
         <code>${escapeHtml(condition.value)}</code>.
-        It will be the first If/Else in the generated setup.
+        It runs before the IF / Else-if chain and must pass.
       </div>
     `).join("");
   }
 
   function renderConditions() {
-    if (!state.conditions.length) {
-      elements.conditionsList.innerHTML = `
+    const conditionContent = state.conditions.length
+      ? renderConditionCards(state.conditions, state.conditionMode)
+      : `
         <div class="empty-state">
           No extra conditions. The action will run every time the selected trigger fires.
         </div>`;
-      return;
-    }
 
-    elements.conditionsList.innerHTML = state.conditions.map((condition, index) => {
+    elements.conditionsList.innerHTML = `
+      ${renderLogicModeControl("primary", state.conditionMode, state.conditions.length)}
+      ${conditionContent}`;
+  }
+
+  function renderLogicModeControl(scope, mode, conditionCount) {
+    const isAny = mode === "any";
+    return `
+      <div class="logic-mode-panel">
+        <div>
+          <span class="logic-kicker">Condition group</span>
+          <strong>${isAny ? "Match any condition (OR)" : "Match all conditions (AND)"}</strong>
+          <span>${conditionCount < 2
+            ? "Add a second condition to use AND/OR logic."
+            : isAny
+              ? "The branch passes as soon as one condition is true."
+              : "The branch passes only when every condition is true."}</span>
+        </div>
+        <label>
+          <span class="sr-only">Condition group logic</span>
+          <select data-logic-mode="${escapeAttr(scope)}">
+            ${option("all", "ALL · AND", mode)}
+            ${option("any", "ANY · OR", mode)}
+          </select>
+        </label>
+      </div>`;
+  }
+
+  function renderConditionCards(conditions, mode, heading = "Condition") {
+    return conditions.map((condition, index) => {
       const resolved = resolveCondition(condition);
       const operators = operatorsForType(resolved.type);
       if (!operators.includes(condition.operator)) condition.operator = defaultOperator(resolved.type);
       const noValue = condition.operator === "Is Null or Empty";
+      const connector = index > 0
+        ? `<div class="logic-connector"><span>${mode === "any" ? "OR" : "AND"}</span></div>`
+        : "";
 
       return `
+        ${connector}
         <article class="config-card" data-condition-card="${condition.id}">
           <div class="config-card-heading">
-            <strong>Condition ${index + 1}</strong>
+            <strong>${escapeHtml(heading)} ${index + 1}</strong>
             <button type="button" class="remove-button" data-action="remove-condition" data-condition-id="${condition.id}">Remove</button>
           </div>
           <div class="condition-grid">
@@ -1134,10 +1324,81 @@
   }
 
   function renderOutcomes() {
-    elements.outcomesList.innerHTML = state.outcomes.map((outcome, index) => `
+    const elseIfHtml = state.elseIfBranches.map((branch, branchIndex) => `
+      <article class="decision-branch">
+        <div class="decision-branch-heading">
+          <div>
+            <span class="branch-badge">ELSE IF ${branchIndex + 1}</span>
+            <p>Evaluated only when every earlier branch fails.</p>
+          </div>
+          <button type="button" class="remove-button" data-action="remove-else-if" data-branch-id="${branch.id}">Remove branch</button>
+        </div>
+        ${renderLogicModeControl(String(branch.id), branch.mode, branch.conditions.length)}
+        <div class="branch-condition-list">
+          ${branch.conditions.length
+            ? renderConditionCards(branch.conditions, branch.mode, "Else-if condition")
+            : '<div class="empty-state">Add at least one condition to this Else-if branch.</div>'}
+        </div>
+        <button type="button" class="button button-quiet branch-add-button" data-action="add-branch-condition" data-branch-id="${branch.id}">+ Add condition</button>
+        <div class="branch-result-heading">
+          <span class="branch-badge is-then">THEN</span>
+          <span>Run these when this Else-if branch matches.</span>
+        </div>
+        <div class="branch-outcome-list">
+          ${renderOutcomeCards(branch.outcomes, "Else-if sub-action")}
+        </div>
+        <button type="button" class="button button-quiet branch-add-button" data-action="add-branch-outcome" data-branch-id="${branch.id}">+ Add sub-action</button>
+      </article>
+    `).join("");
+
+    const elseHtml = state.elseOutcomes.length
+      ? `
+        <article class="decision-branch is-else">
+          <div class="decision-branch-heading">
+            <div>
+              <span class="branch-badge is-else">ELSE</span>
+              <p>Runs only when the IF and every Else-if branch fail.</p>
+            </div>
+            <button type="button" class="remove-button" data-action="remove-else-branch">Remove branch</button>
+          </div>
+          <div class="branch-outcome-list">
+            ${renderOutcomeCards(state.elseOutcomes, "Else sub-action")}
+          </div>
+          <button type="button" class="button button-quiet branch-add-button" data-action="add-else-outcome">+ Add sub-action</button>
+        </article>`
+      : "";
+
+    elements.outcomesList.innerHTML = `
+      <div class="branch-result-heading is-primary">
+        <span class="branch-badge is-then">THEN</span>
+        <span>${state.conditions.length ? "Run these when the IF branch matches." : "Run these whenever the trigger fires."}</span>
+      </div>
+      <div class="branch-outcome-list">
+        ${renderOutcomeCards(state.outcomes, "Sub-action")}
+      </div>
+      <button type="button" class="button button-secondary branch-add-button" data-action="add-outcome">+ Add THEN sub-action</button>
+      <div class="branch-builder">
+        <div class="branch-builder-heading">
+          <div>
+            <span class="logic-kicker">Optional branching</span>
+            <strong>Otherwise, try another condition or run a fallback</strong>
+            <p>Else-if branches are checked in order. Else runs only when no branch matches.</p>
+          </div>
+          <div class="branch-builder-actions">
+            <button type="button" class="button button-secondary" data-action="add-else-if">+ Add Else-if</button>
+            ${state.elseOutcomes.length ? "" : '<button type="button" class="button button-quiet" data-action="add-else-branch">+ Add Else</button>'}
+          </div>
+        </div>
+        ${elseIfHtml}
+        ${elseHtml}
+      </div>`;
+  }
+
+  function renderOutcomeCards(outcomes, heading) {
+    return outcomes.map((outcome, index) => `
       <article class="config-card">
         <div class="config-card-heading">
-          <strong>Sub-action ${index + 1}</strong>
+          <strong>${escapeHtml(heading)} ${index + 1}</strong>
           <button type="button" class="remove-button" data-action="remove-outcome" data-outcome-id="${outcome.id}">Remove</button>
         </div>
         <div class="field">
@@ -1354,28 +1615,55 @@
         ${triggerSetupHtml()}
       </li>`);
 
-    if (allConditions.length) {
+    const automaticConditions = allConditions.filter((condition) => condition.branchKind === "automatic");
+    const decisionBranches = getDecisionBranches();
+    const decisionConditions = decisionBranches.flatMap((branch) => branch.conditions);
+
+    if (automaticConditions.length || decisionConditions.length) {
+      const conditionRows = [
+        ...automaticConditions.map((condition, index) => ({
+          branch: "Required filter",
+          connector: index === 0 ? "FIRST" : "AND",
+          condition,
+          placement: index === 0 ? "Root of Sub-Actions" : "Previous filter's True Result"
+        })),
+        ...decisionBranches.flatMap((branch, branchIndex) =>
+          branch.conditions.map((condition, conditionIndex) => ({
+            branch: branch.label,
+            connector: conditionIndex === 0 ? (branchIndex === 0 ? "IF" : "ELSE IF") : branch.mode === "any" ? "OR" : "AND",
+            condition,
+            placement: conditionIndex === 0
+              ? branchIndex === 0
+                ? automaticConditions.length ? "Final filter's True Result" : "Root of Sub-Actions"
+                : "False path from the previous branch"
+              : branch.mode === "any"
+                ? "Previous condition's False Result"
+                : "Previous condition's True Result"
+          }))
+        )
+      ];
+
       steps.push(`
         <li>
-          <h3>Verify the editable If/Else checks</h3>
-          <p>The import creates the first real <strong>Core → Logic → If/Else</strong> at the root of the Sub-Actions pane. Every later row is nested <strong>inside the previous True Result</strong>, creating an AND chain in which every row must pass. Use this table to inspect, edit, or manually recreate them.</p>
+          <h3>Verify the editable IF / OR / Else-if chain</h3>
+          <p>The import creates real <strong>Core → Logic → If/Else</strong> nodes. AND continues through <strong>True Result</strong>; OR and Else-if continue through <strong>False Result</strong>. Required automatic filters always wrap the entire decision chain.</p>
           <table class="config-table">
             <thead>
-              <tr><th>#</th><th>Input</th><th>Operator</th><th>Value</th><th>Auto Type</th><th>Place it</th></tr>
+              <tr><th>Branch</th><th>Join</th><th>Input</th><th>Operator</th><th>Value</th><th>Place it</th></tr>
             </thead>
             <tbody>
-              ${allConditions.map((condition, index) => `
+              ${conditionRows.map((row) => `
                 <tr>
-                  <td>${index + 1}${condition.automatic ? " · auto" : ""}</td>
-                  <td><code>${escapeHtml(condition.input)}</code></td>
-                  <td>${escapeHtml(condition.operator)}</td>
-                  <td>${condition.operator === "Is Null or Empty" ? "<em>leave blank</em>" : `<code>${escapeHtml(condition.value)}</code>`}</td>
-                  <td>${condition.autoType ? "On" : "Off"}</td>
-                  <td>${index === 0 ? "Root of Sub-Actions" : `Inside Condition ${index}'s True Result`}</td>
+                  <td>${escapeHtml(row.branch)}</td>
+                  <td><strong>${escapeHtml(row.connector)}</strong></td>
+                  <td><code>${escapeHtml(row.condition.input)}</code></td>
+                  <td>${escapeHtml(row.condition.operator)}</td>
+                  <td>${row.condition.operator === "Is Null or Empty" ? "<em>leave blank</em>" : `<code>${escapeHtml(row.condition.value)}</code>`}</td>
+                  <td>${escapeHtml(row.placement)}</td>
                 </tr>`).join("")}
             </tbody>
           </table>
-          <p>Leave every <strong>False Result</strong> empty unless you specifically want a separate fallback behavior.</p>
+          <p>Auto Type is <strong>On</strong> for the generated rows unless you turned it off. The import automatically repeats a later branch where multiple failure paths must converge, while keeping every resulting node editable.</p>
         </li>`);
     } else {
       steps.push(`
@@ -1387,16 +1675,22 @@
 
     steps.push(`
       <li>
-        <h3>Verify the native result sub-actions</h3>
-        <p>The import creates these as their normal Streamer.bot sub-action types. ${allConditions.length ? "They appear inside the final condition's True Result, in this order:" : "They appear directly in the action, in this order:"}</p>
+        <h3>Verify each branch's native result sub-actions</h3>
+        <p>The import creates every result as its normal Streamer.bot sub-action type and places it under the matching THEN or ELSE path.</p>
         <table class="config-table">
-          <thead><tr><th>#</th><th>Sub-action</th><th>Settings</th></tr></thead>
+          <thead><tr><th>Branch</th><th>#</th><th>Sub-action</th><th>Settings</th></tr></thead>
           <tbody>
-            ${state.outcomes.map((outcome, index) => `
+            ${[
+              ...decisionBranches.flatMap((branch) =>
+                branch.outcomes.map((outcome, index) => ({ branch: `${branch.label} → THEN`, outcome, index }))
+              ),
+              ...state.elseOutcomes.map((outcome, index) => ({ branch: "ELSE", outcome, index }))
+            ].map((row) => `
               <tr>
-                <td>${index + 1}</td>
-                <td><strong>${escapeHtml(outcomePath(outcome))}</strong></td>
-                <td>${outcomeSettingsHtml(outcome)}</td>
+                <td>${escapeHtml(row.branch)}</td>
+                <td>${row.index + 1}</td>
+                <td><strong>${escapeHtml(outcomePath(row.outcome))}</strong></td>
+                <td>${outcomeSettingsHtml(row.outcome)}</td>
               </tr>`).join("")}
           </tbody>
         </table>
@@ -1675,7 +1969,32 @@
 
   function getAllConditions() {
     const automatic = getAutomaticConditions();
-    const manual = state.conditions.map((condition) => {
+    const primary = resolveConditionList(state.conditions, {
+      branchKind: "if",
+      branchIndex: 0,
+      mode: state.conditionMode
+    });
+    const elseIf = state.elseIfBranches.flatMap((branch, branchIndex) =>
+      resolveConditionList(branch.conditions, {
+        branchKind: "else-if",
+        branchIndex: branchIndex + 1,
+        mode: branch.mode
+      })
+    );
+    return [
+      ...automatic.map((condition) => ({
+        ...condition,
+        branchKind: "automatic",
+        branchIndex: -1,
+        mode: "all"
+      })),
+      ...primary,
+      ...elseIf
+    ];
+  }
+
+  function resolveConditionList(conditions, metadata = {}) {
+    return conditions.map((condition) => {
       const resolved = resolveCondition(condition);
       return {
         token: resolved.token,
@@ -1687,10 +2006,29 @@
         label: resolved.label,
         type: resolved.type,
         source: resolved.source,
-        description: resolved.description
+        description: resolved.description,
+        ...metadata
       };
     });
-    return [...automatic, ...manual];
+  }
+
+  function getDecisionBranches() {
+    return [
+      {
+        id: "primary",
+        label: "IF",
+        mode: state.conditionMode,
+        conditions: resolveConditionList(state.conditions),
+        outcomes: state.outcomes
+      },
+      ...state.elseIfBranches.map((branch, branchIndex) => ({
+        id: branch.id,
+        label: `ELSE IF ${branchIndex + 1}`,
+        mode: branch.mode,
+        conditions: resolveConditionList(branch.conditions),
+        outcomes: branch.outcomes
+      }))
+    ];
   }
 
   function defaultConditionForTrigger() {
@@ -1720,10 +2058,13 @@
 
   function removeIncompatibleArgumentConditions(previousType, nextType) {
     if (previousType === nextType) return;
-    state.conditions = state.conditions.filter((condition) => {
+    const isCompatible = (condition) => {
       if (condition.variableKey.startsWith("global:") || condition.variableKey.startsWith("mirror:")) return true;
-      if (condition.variableKey === "custom:global" || condition.variableKey === "custom:token") return true;
-      return false;
+      return condition.variableKey === "custom:global" || condition.variableKey === "custom:token";
+    };
+    state.conditions = state.conditions.filter(isCompatible);
+    state.elseIfBranches.forEach((branch) => {
+      branch.conditions = branch.conditions.filter(isCompatible);
     });
   }
 
@@ -1746,15 +2087,34 @@
 
   function buildRecipeSentence() {
     const trigger = triggerSentence();
-    const conditions = getAllConditions();
-    const outcomes = state.outcomes;
-    const conditionText = conditions.length
-      ? `, if ${conditions.slice(0, 2).map(conditionSentence).join(" and ")}${conditions.length > 2 ? ` and ${conditions.length - 2} more` : ""}`
-      : "";
-    const outcomeText = outcomes.length
-      ? outcomes.slice(0, 2).map(outcomeSentence).join(" and ") + (outcomes.length > 2 ? ` and ${outcomes.length - 2} more` : "")
-      : "do nothing";
-    return `When ${trigger}${conditionText}, then ${outcomeText}.`;
+    const branches = getDecisionBranches();
+    const primary = branches[0];
+    const primaryOutcome = summarizeOutcomes(primary.outcomes);
+
+    if (!primary.conditions.length) {
+      return `When ${trigger}, then ${primaryOutcome}.`;
+    }
+
+    const clauses = [
+      `if ${summarizeConditionGroup(primary.conditions, primary.mode)}, then ${primaryOutcome}`
+    ];
+    branches.slice(1).forEach((branch) => {
+      clauses.push(`otherwise if ${summarizeConditionGroup(branch.conditions, branch.mode)}, then ${summarizeOutcomes(branch.outcomes)}`);
+    });
+    if (state.elseOutcomes.length) clauses.push(`otherwise ${summarizeOutcomes(state.elseOutcomes)}`);
+    return `When ${trigger}, ${clauses.join(", ")}.`;
+  }
+
+  function summarizeConditionGroup(conditions, mode) {
+    const connector = mode === "any" ? " or " : " and ";
+    const summary = conditions.slice(0, 2).map(conditionSentence).join(connector);
+    return conditions.length > 2 ? `${summary}${connector}${conditions.length - 2} more` : summary || "the branch matches";
+  }
+
+  function summarizeOutcomes(outcomes) {
+    if (!outcomes.length) return "do nothing";
+    const summary = outcomes.slice(0, 2).map(outcomeSentence).join(" and ");
+    return outcomes.length > 2 ? `${summary} and ${outcomes.length - 2} more` : summary;
   }
 
   function triggerSentence() {
@@ -1928,7 +2288,15 @@
     lines.push(treeLine(1, triggerPath(), "is-trigger"));
     lines.push(treeLine(0, "Sub-Actions", "is-trigger"));
 
-    if (!allConditions.length) {
+    const automatic = allConditions.filter((condition) => condition.branchKind === "automatic");
+    automatic.forEach((condition, index) => {
+      lines.push(treeLine(1, `Required Filter ${index + 1}`, "is-condition"));
+      lines.push(treeLine(2, `${condition.input} ${condition.operator} ${condition.value}`, "is-muted"));
+      lines.push(treeLine(2, "False → stop; True → decision chain", "is-muted"));
+    });
+
+    const branches = getDecisionBranches();
+    if (!branches[0].conditions.length) {
       state.outcomes.forEach((outcome) => {
         lines.push(treeLine(1, outcomePath(outcome), "is-outcome"));
         outcomeSettings(outcome).forEach((setting) => lines.push(treeLine(2, setting, "is-muted")));
@@ -1936,23 +2304,31 @@
       return lines.join("");
     }
 
-    allConditions.forEach((condition, index) => {
-      const depth = index + 1;
-      lines.push(treeLine(depth, `If/Else ${index + 1}${condition.automatic ? " (automatic filter)" : ""}`, "is-condition"));
-      lines.push(treeLine(depth + 1, `Input: ${condition.input}`, "is-muted"));
-      lines.push(treeLine(depth + 1, `Operator: ${condition.operator}`, "is-muted"));
-      if (condition.operator !== "Is Null or Empty") {
-        lines.push(treeLine(depth + 1, `Value: ${condition.value || "…"}`, "is-muted"));
-      }
-      lines.push(treeLine(depth + 1, "True Result", "is-condition"));
+    branches.forEach((branch) => {
+      const modeLabel = branch.mode === "any" ? "Match ANY · OR" : "Match ALL · AND";
+      lines.push(treeLine(1, `${branch.label} — ${modeLabel}`, "is-condition"));
+      branch.conditions.forEach((condition, conditionIndex) => {
+        const connector = conditionIndex === 0 ? "" : branch.mode === "any" ? "OR · " : "AND · ";
+        const value = condition.operator === "Is Null or Empty" ? "" : ` · ${condition.value || "…"}`;
+        lines.push(treeLine(2, `${connector}${condition.input} · ${condition.operator}${value}`, "is-muted"));
+      });
+      lines.push(treeLine(2, "THEN", "is-condition"));
+      branch.outcomes.forEach((outcome) => {
+        lines.push(treeLine(3, outcomePath(outcome), "is-outcome"));
+        outcomeSettings(outcome).forEach((setting) => lines.push(treeLine(4, setting, "is-muted")));
+      });
     });
 
-    const outcomeDepth = allConditions.length + 2;
-    state.outcomes.forEach((outcome) => {
-      lines.push(treeLine(outcomeDepth, outcomePath(outcome), "is-outcome"));
-      outcomeSettings(outcome).forEach((setting) => lines.push(treeLine(outcomeDepth + 1, setting, "is-muted")));
-    });
-    lines.push(treeLine(1, "All False Results: leave empty", "is-muted"));
+    if (state.elseOutcomes.length) {
+      lines.push(treeLine(1, "ELSE — no branch matched", "is-condition"));
+      state.elseOutcomes.forEach((outcome) => {
+        lines.push(treeLine(2, outcomePath(outcome), "is-outcome"));
+        outcomeSettings(outcome).forEach((setting) => lines.push(treeLine(3, setting, "is-muted")));
+      });
+    } else {
+      lines.push(treeLine(1, "ELSE — do nothing", "is-muted"));
+    }
+
     return lines.join("");
   }
 
@@ -1978,7 +2354,7 @@
       }));
     });
 
-    state.outcomes.forEach((outcome) => {
+    getAllOutcomes().forEach((outcome) => {
       outcomeTextValues(outcome).forEach((text) => {
         extractTokens(text).forEach((token) => {
           if (!byToken.has(token)) byToken.set(token, variableFromToken(token, catalog));
@@ -2084,49 +2460,41 @@
     if (!state.actionName.trim()) errors.push("Enter an action name.");
     if (!state.outcomes.length) errors.push("Add at least one result sub-action.");
 
-    state.conditions.forEach((condition, index) => {
-      const resolved = resolveCondition(condition);
-      const displayIndex = index + 1;
+    if ((state.elseIfBranches.length || state.elseOutcomes.length) && !state.conditions.length) {
+      errors.push("Add at least one condition to the IF branch before using Else-if or Else.");
+    }
 
-      if (condition.variableKey.startsWith("custom:") && !condition.customName.trim()) {
-        errors.push(`Condition ${displayIndex} needs a variable or field name.`);
+    const conditionGroups = [
+      { label: "IF", conditions: state.conditions },
+      ...state.elseIfBranches.map((branch, index) => ({
+        label: `Else-if ${index + 1}`,
+        conditions: branch.conditions
+      }))
+    ];
+    conditionGroups.forEach((group, groupIndex) => {
+      if (groupIndex > 0 && !group.conditions.length) {
+        errors.push(`${group.label} needs at least one condition.`);
       }
-      if (condition.variableKey === "custom:token" && condition.customName.trim()) {
-        const token = condition.customName.trim();
-        const valid = (/^%[^%]+%$/).test(token) || (/^~[^~]+~$/).test(token);
-        if (!valid) errors.push(`Condition ${displayIndex}'s custom token must use %argument% or ~persistedGlobal~ syntax.`);
-      }
-      if (condition.operator !== "Is Null or Empty" && !String(condition.value).trim()) {
-        errors.push(`Condition ${displayIndex} needs a comparison value.`);
-      }
-      if (resolved.token.startsWith("%edEvent_") && state.trigger.type !== "journal") {
-        errors.push(`Condition ${displayIndex} uses an event argument, but the selected trigger is not a journal event.`);
-      }
-      if (["%edFlag%", "%edValue%"].includes(resolved.token) && state.trigger.type !== "flag") {
-        errors.push(`Condition ${displayIndex} uses a ship-flag argument, but the selected trigger is not a ship-state change.`);
-      }
-      if (resolved.token.startsWith("%edCompanion") && state.trigger.type !== "companion") {
-        errors.push(`Condition ${displayIndex} uses a companion-file argument, but the selected trigger is different.`);
-      }
-      if (["%edStatus%", "%edMessage%", "%edJournalFile%"].includes(resolved.token) && state.trigger.type !== "watcher") {
-        errors.push(`Condition ${displayIndex} uses a watcher-status argument, but the selected trigger is different.`);
-      }
+      group.conditions.forEach((condition, index) => {
+        validateConditionForBuild(condition, `${group.label} condition ${index + 1}`, errors);
+      });
     });
 
-    state.outcomes.forEach((outcome, index) => {
-      const number = index + 1;
-      if (outcome.type === "sound" && !outcome.file.trim()) warnings.push(`Sub-action ${number}: choose a sound file.`);
-      if (outcome.type === "tts" && !outcome.voiceAlias.trim()) warnings.push(`Sub-action ${number}: enter the Speaker.bot voice alias.`);
-      if (outcome.type === "tts" && !outcome.message.trim()) warnings.push(`Sub-action ${number}: enter the text to speak.`);
-      if (outcome.type === "chat" && !outcome.message.trim()) warnings.push(`Sub-action ${number}: enter the chat message.`);
-      if (outcome.type === "chat" && outcome.platform === "YouTube" && /%[^%\r\n]+%|~[^~\r\n]+~/.test(outcome.message)) warnings.push(`Sub-action ${number}: YouTube's native Send Message sub-action only supports plain text; remove variables before exporting.`);
-      if (outcome.type === "obs" && (!outcome.scene.trim() || !outcome.source.trim())) warnings.push(`Sub-action ${number}: choose both the OBS scene and source.`);
-      if (outcome.type === "run-action" && !outcome.actionName.trim()) warnings.push(`Sub-action ${number}: choose the action to run.`);
-      if (outcome.type === "run-action" && outcome.actionName.trim()) warnings.push(`Sub-action ${number}: after importing, open Run Action and select “${outcome.actionName.trim()}”; Streamer.bot action IDs are installation-specific.`);
-      if (outcome.type === "keyboard" && !outcome.key.trim()) warnings.push(`Sub-action ${number}: choose the key or shortcut.`);
-      if (outcome.type === "keyboard" && /\b(win|windows|meta|cmd)\b/i.test(outcome.key)) warnings.push(`Sub-action ${number}: Streamer.bot's native Keyboard Press sub-action does not support the Windows-key modifier.`);
-      if (outcome.type === "custom" && !outcome.searchName.trim()) warnings.push(`Sub-action ${number}: name the sub-action you want to add.`);
-      if (outcome.type === "custom") warnings.push(`Sub-action ${number}: choose a specific sub-action type to create a native Streamer.bot import.`);
+    const outcomeGroups = [
+      { label: "IF", outcomes: state.outcomes },
+      ...state.elseIfBranches.map((branch, index) => ({
+        label: `Else-if ${index + 1}`,
+        outcomes: branch.outcomes
+      })),
+      ...(state.elseOutcomes.length ? [{ label: "Else", outcomes: state.elseOutcomes }] : [])
+    ];
+    outcomeGroups.forEach((group, groupIndex) => {
+      if (groupIndex > 0 && group.label.startsWith("Else-if") && !group.outcomes.length) {
+        errors.push(`${group.label} needs at least one sub-action.`);
+      }
+      group.outcomes.forEach((outcome, index) => {
+        validateOutcomeForBuild(outcome, `${group.label} sub-action ${index + 1}`, warnings);
+      });
     });
 
     if (state.trigger.type === "journal" && state.trigger.event === "__any__") {
@@ -2135,11 +2503,54 @@
     if (state.trigger.type === "external" && !state.trigger.externalLabel.trim()) {
       warnings.push("Name the command, hotkey, timer, or ordinary trigger you will connect.");
     }
-    if (state.outcomes.some((outcome) => /C:\\Sounds\\/i.test(outcome.file || ""))) {
+    if (getAllOutcomes().some((outcome) => /C:\\Sounds\\/i.test(outcome.file || ""))) {
       warnings.push("Replace the example sound path with a file that exists on the Streamer.bot computer.");
     }
 
     return { errors: uniqueStrings(errors), warnings: uniqueStrings(warnings) };
+  }
+
+  function validateConditionForBuild(condition, label, errors) {
+    const resolved = resolveCondition(condition);
+
+    if (condition.variableKey.startsWith("custom:") && !condition.customName.trim()) {
+      errors.push(`${label} needs a variable or field name.`);
+    }
+    if (condition.variableKey === "custom:token" && condition.customName.trim()) {
+      const token = condition.customName.trim();
+      const valid = (/^%[^%]+%$/).test(token) || (/^~[^~]+~$/).test(token);
+      if (!valid) errors.push(`${label}'s custom token must use %argument% or ~persistedGlobal~ syntax.`);
+    }
+    if (condition.operator !== "Is Null or Empty" && !String(condition.value).trim()) {
+      errors.push(`${label} needs a comparison value.`);
+    }
+    if (resolved.token.startsWith("%edEvent_") && state.trigger.type !== "journal") {
+      errors.push(`${label} uses an event argument, but the selected trigger is not a journal event.`);
+    }
+    if (["%edFlag%", "%edValue%"].includes(resolved.token) && state.trigger.type !== "flag") {
+      errors.push(`${label} uses a ship-flag argument, but the selected trigger is not a ship-state change.`);
+    }
+    if (resolved.token.startsWith("%edCompanion") && state.trigger.type !== "companion") {
+      errors.push(`${label} uses a companion-file argument, but the selected trigger is different.`);
+    }
+    if (["%edStatus%", "%edMessage%", "%edJournalFile%"].includes(resolved.token) && state.trigger.type !== "watcher") {
+      errors.push(`${label} uses a watcher-status argument, but the selected trigger is different.`);
+    }
+  }
+
+  function validateOutcomeForBuild(outcome, label, warnings) {
+    if (outcome.type === "sound" && !outcome.file.trim()) warnings.push(`${label}: choose a sound file.`);
+    if (outcome.type === "tts" && !outcome.voiceAlias.trim()) warnings.push(`${label}: enter the Speaker.bot voice alias.`);
+    if (outcome.type === "tts" && !outcome.message.trim()) warnings.push(`${label}: enter the text to speak.`);
+    if (outcome.type === "chat" && !outcome.message.trim()) warnings.push(`${label}: enter the chat message.`);
+    if (outcome.type === "chat" && outcome.platform === "YouTube" && /%[^%\r\n]+%|~[^~\r\n]+~/.test(outcome.message)) warnings.push(`${label}: YouTube's native Send Message sub-action only supports plain text; remove variables before exporting.`);
+    if (outcome.type === "obs" && (!outcome.scene.trim() || !outcome.source.trim())) warnings.push(`${label}: choose both the OBS scene and source.`);
+    if (outcome.type === "run-action" && !outcome.actionName.trim()) warnings.push(`${label}: choose the action to run.`);
+    if (outcome.type === "run-action" && outcome.actionName.trim()) warnings.push(`${label}: after importing, open Run Action and select “${outcome.actionName.trim()}”; Streamer.bot action IDs are installation-specific.`);
+    if (outcome.type === "keyboard" && !outcome.key.trim()) warnings.push(`${label}: choose the key or shortcut.`);
+    if (outcome.type === "keyboard" && /\b(win|windows|meta|cmd)\b/i.test(outcome.key)) warnings.push(`${label}: Streamer.bot's native Keyboard Press sub-action does not support the Windows-key modifier.`);
+    if (outcome.type === "custom" && !outcome.searchName.trim()) warnings.push(`${label}: name the sub-action you want to add.`);
+    if (outcome.type === "custom") warnings.push(`${label}: choose a specific sub-action type to create a native Streamer.bot import.`);
   }
 
   function renderImportNote() {
@@ -2148,31 +2559,46 @@
 
     const config = buildExporterConfig();
     const triggerInfo = exporter.getTriggerExportInfo(config);
-    const actionTargetNote = state.outcomes.some((outcome) => outcome.type === "run-action")
+    const actionTargetNote = getAllOutcomes().some((outcome) => outcome.type === "run-action")
       ? " Run Action remains editable, but you must select its target after import because action IDs differ between installations."
       : "";
+    const branchingNote = state.elseIfBranches.length || state.elseOutcomes.length || state.conditionMode === "any"
+      ? " AND, OR, Else-if, and Else paths import as native editable If/Else groups."
+      : " Every condition becomes a real editable If/Else sub-action.";
 
     if (triggerInfo.included) {
-      elements.importNote.innerHTML = `<strong>Editable native import:</strong> Includes the ${escapeHtml(triggerInfo.label)} trigger. Every condition becomes a real If/Else sub-action, and every result remains editable in Streamer.bot.${escapeHtml(actionTargetNote)}`;
+      elements.importNote.innerHTML = `<strong>Editable native import:</strong> Includes the ${escapeHtml(triggerInfo.label)} trigger.${escapeHtml(branchingNote)} Every result remains editable in Streamer.bot.${escapeHtml(actionTargetNote)}`;
       return;
     }
 
-    elements.importNote.innerHTML = `<strong>Editable native import:</strong> Every condition becomes a real If/Else sub-action, and every result remains editable in Streamer.bot. After importing, attach <code>${escapeHtml(triggerPath())}</code>.${escapeHtml(actionTargetNote)}`;
+    elements.importNote.innerHTML = `<strong>Editable native import:</strong>${escapeHtml(branchingNote)} Every result remains editable in Streamer.bot. After importing, attach <code>${escapeHtml(triggerPath())}</code>.${escapeHtml(actionTargetNote)}`;
   }
 
   function buildExporterConfig() {
+    const automaticConditions = getAutomaticConditions().map(toExporterCondition);
+    const branches = getDecisionBranches().map((branch) => ({
+      mode: branch.mode,
+      conditions: branch.conditions.map(toExporterCondition),
+      outcomes: branch.outcomes.map(stripId)
+    }));
+
     return {
       actionName: state.actionName,
       trigger: { ...state.trigger },
       triggerPath: triggerPath(),
-      conditions: getAllConditions().map((condition) => ({
-        token: condition.token,
-        operator: condition.operator,
-        value: condition.value,
-        type: condition.type,
-        autoType: condition.autoType
-      })),
-      outcomes: state.outcomes.map(stripId)
+      automaticConditions,
+      branches,
+      elseOutcomes: state.elseOutcomes.map(stripId)
+    };
+  }
+
+  function toExporterCondition(condition) {
+    return {
+      token: condition.token,
+      operator: condition.operator,
+      value: condition.value,
+      type: condition.type,
+      autoType: condition.autoType
     };
   }
 
@@ -2210,7 +2636,8 @@
   }
 
   function buildGuideText() {
-    const allConditions = getAllConditions();
+    const automaticConditions = getAutomaticConditions();
+    const branches = getDecisionBranches();
     const lines = [
       "ELITE DANGEROUS STREAMER.BOT ACTION SETUP",
       "",
@@ -2222,26 +2649,46 @@
       `3. Connect this trigger: ${triggerPath()}.`
     ];
 
-    if (allConditions.length) {
-      lines.push("4. Add Core → Logic → If/Else conditions in this order. Put each later condition inside the previous True Result:");
-      allConditions.forEach((condition, index) => {
-        lines.push(
-          `   ${index + 1}. Input ${condition.input} | Operator ${condition.operator}` +
-          (condition.operator === "Is Null or Empty" ? "" : ` | Value ${condition.value}`) +
-          ` | Auto Type ${condition.autoType ? "On" : "Off"}`
-        );
+    if (automaticConditions.length) {
+      lines.push("4. Add these required automatic filters before the decision chain:");
+      automaticConditions.forEach((condition, index) => {
+        lines.push(`   ${index + 1}. ${formatConditionForGuide(condition)}`);
       });
-      lines.push("   Leave False Result groups empty.");
-      lines.push("5. Inside the final True Result, add:");
+      lines.push("   Put each later filter in the previous filter's True Result. A False Result stops the chain.");
     } else {
-      lines.push("4. No If/Else is needed.");
-      lines.push("5. Add these sub-actions at the root:");
+      lines.push("4. No automatic trigger filter is required.");
     }
 
-    state.outcomes.forEach((outcome, index) => {
-      lines.push(`   ${index + 1}. ${outcomePath(outcome)}`);
-      outcomeSettings(outcome).forEach((setting) => lines.push(`      - ${setting}`));
-    });
+    if (branches[0].conditions.length) {
+      lines.push("5. Build the native IF / Else-if chain:");
+      branches.forEach((branch) => {
+        lines.push(`   ${branch.label} — Match ${branch.mode === "any" ? "ANY (OR)" : "ALL (AND)"}`);
+        branch.conditions.forEach((condition, index) => {
+          const connector = index === 0 ? "IF" : branch.mode === "any" ? "OR" : "AND";
+          lines.push(`      ${connector}: ${formatConditionForGuide(condition)}`);
+        });
+        lines.push("      THEN:");
+        branch.outcomes.forEach((outcome, index) => {
+          lines.push(`        ${index + 1}. ${outcomePath(outcome)}`);
+          outcomeSettings(outcome).forEach((setting) => lines.push(`           - ${setting}`));
+        });
+      });
+      if (state.elseOutcomes.length) {
+        lines.push("   ELSE:");
+        state.elseOutcomes.forEach((outcome, index) => {
+          lines.push(`      ${index + 1}. ${outcomePath(outcome)}`);
+          outcomeSettings(outcome).forEach((setting) => lines.push(`         - ${setting}`));
+        });
+      } else {
+        lines.push("   ELSE: do nothing.");
+      }
+    } else {
+      lines.push("5. No decision chain is needed. Add these sub-actions at the root:");
+      state.outcomes.forEach((outcome, index) => {
+        lines.push(`   ${index + 1}. ${outcomePath(outcome)}`);
+        outcomeSettings(outcome).forEach((setting) => lines.push(`      - ${setting}`));
+      });
+    }
 
     lines.push("");
     lines.push("VARIABLES USED");
@@ -2258,6 +2705,12 @@
     lines.push("");
     lines.push("Reference: https://tannermidd.github.io/elite-dangerous-streambot/subactions.html");
     return lines.join("\n");
+  }
+
+  function formatConditionForGuide(condition) {
+    return `Input ${condition.input || condition.token} | Operator ${condition.operator}` +
+      (condition.operator === "Is Null or Empty" ? "" : ` | Value ${condition.value}`) +
+      ` | Auto Type ${condition.autoType ? "On" : "Off"}`;
   }
 
   function buildVariablesText() {
@@ -2277,11 +2730,18 @@
   function buildShareLink() {
     const url = new URL(window.location.href);
     url.searchParams.set("build", encodePayload({
-      version: 1,
+      version: 2,
       actionName: state.actionName,
       trigger: state.trigger,
+      conditionMode: state.conditionMode,
       conditions: state.conditions.map(stripId),
-      outcomes: state.outcomes.map(stripId)
+      outcomes: state.outcomes.map(stripId),
+      elseIfBranches: state.elseIfBranches.map((branch) => ({
+        mode: branch.mode,
+        conditions: branch.conditions.map(stripId),
+        outcomes: branch.outcomes.map(stripId)
+      })),
+      elseOutcomes: state.elseOutcomes.map(stripId)
     }));
     url.hash = "";
     return url.toString();
@@ -2370,11 +2830,56 @@
   }
 
   function findCondition(id) {
-    return state.conditions.find((item) => String(item.id) === String(id));
+    return getAllConditionCollections()
+      .flat()
+      .find((item) => String(item.id) === String(id));
   }
 
   function findOutcome(id) {
-    return state.outcomes.find((item) => String(item.id) === String(id));
+    return getAllOutcomeCollections()
+      .flat()
+      .find((item) => String(item.id) === String(id));
+  }
+
+  function findElseIfBranch(id) {
+    return state.elseIfBranches.find((branch) => String(branch.id) === String(id));
+  }
+
+  function getAllConditionCollections() {
+    return [state.conditions, ...state.elseIfBranches.map((branch) => branch.conditions)];
+  }
+
+  function getAllOutcomeCollections() {
+    return [
+      state.outcomes,
+      ...state.elseIfBranches.map((branch) => branch.outcomes),
+      state.elseOutcomes
+    ];
+  }
+
+  function getAllOutcomes() {
+    return getAllOutcomeCollections().flat();
+  }
+
+  function findOutcomeCollection(id) {
+    return getAllOutcomeCollections().find((collection) =>
+      collection.some((outcome) => String(outcome.id) === String(id))
+    );
+  }
+
+  function removeConditionById(id) {
+    state.conditions = state.conditions.filter((condition) => String(condition.id) !== String(id));
+    state.elseIfBranches.forEach((branch) => {
+      branch.conditions = branch.conditions.filter((condition) => String(condition.id) !== String(id));
+    });
+  }
+
+  function removeOutcomeById(id) {
+    state.outcomes = state.outcomes.filter((outcome) => String(outcome.id) !== String(id));
+    state.elseIfBranches.forEach((branch) => {
+      branch.outcomes = branch.outcomes.filter((outcome) => String(outcome.id) !== String(id));
+    });
+    state.elseOutcomes = state.elseOutcomes.filter((outcome) => String(outcome.id) !== String(id));
   }
 
   function triggerVariableGroupLabel() {

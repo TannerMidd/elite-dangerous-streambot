@@ -135,7 +135,7 @@
     const triggerDescription = triggerInfo.included
       ? `Includes the ${triggerInfo.label} trigger.`
       : `After import, attach this trigger: ${String(config.triggerPath || "the selected trigger")}.`;
-    const runActionDescription = (config.outcomes || []).some((outcome) => outcome.type === "run-action")
+    const runActionDescription = getAllConfiguredOutcomes(config).some((outcome) => outcome.type === "run-action")
       ? " Run Action targets are installation-specific; open that sub-action after import and select the named target."
       : "";
 
@@ -143,7 +143,7 @@
       meta: {
         name: String(config.actionName).trim(),
         author: "Elite Dangerous Streambot Action Builder",
-        version: "1.1.0",
+        version: "1.2.0",
         description: `Generated for the standalone Elite Dangerous C# watcher. ${triggerDescription}${runActionDescription}`,
         autoRunAction: null,
         minimumVersion: null
@@ -202,24 +202,110 @@
   }
 
   function buildNativeSubActions(config) {
-    const conditions = Array.isArray(config.conditions) ? config.conditions : [];
-    const outcomes = Array.isArray(config.outcomes) ? config.outcomes : [];
+    const decision = normalizeDecisionModel(config);
+    const buildDecision = (parentId) => buildDecisionBranch(decision, 0, parentId);
 
-    if (!conditions.length) {
-      return outcomes.map((outcome, index) => buildNativeOutcome(outcome, null, index));
+    if (!decision.automaticConditions.length) {
+      return buildDecision(null);
     }
 
-    return [buildCondition(conditions, outcomes, 0, null, 0)];
+    return [buildConditionExpression(
+      decision.automaticConditions,
+      "all",
+      0,
+      null,
+      0,
+      (successParentId) => buildDecision(successParentId),
+      () => []
+    )];
   }
 
-  function buildCondition(conditions, outcomes, conditionIndex, parentId, index) {
+  function normalizeDecisionModel(config) {
+    const value = config && typeof config === "object" ? config : {};
+    const automaticConditions = Array.isArray(value.automaticConditions) ? value.automaticConditions : [];
+    const hasBranches = Array.isArray(value.branches) && value.branches.length > 0;
+    const branches = hasBranches
+      ? value.branches.map((branch) => ({
+        mode: branch && branch.mode === "any" ? "any" : "all",
+        conditions: branch && Array.isArray(branch.conditions) ? branch.conditions : [],
+        outcomes: branch && Array.isArray(branch.outcomes) ? branch.outcomes : []
+      }))
+      : [{
+        mode: value.conditionMode === "any" ? "any" : "all",
+        conditions: Array.isArray(value.conditions) ? value.conditions : [],
+        outcomes: Array.isArray(value.outcomes) ? value.outcomes : []
+      }];
+
+    return {
+      automaticConditions,
+      branches,
+      elseOutcomes: Array.isArray(value.elseOutcomes) ? value.elseOutcomes : []
+    };
+  }
+
+  function getAllConfiguredOutcomes(config) {
+    const decision = normalizeDecisionModel(config);
+    return [
+      ...decision.branches.flatMap((branch) => branch.outcomes),
+      ...decision.elseOutcomes
+    ];
+  }
+
+  function buildDecisionBranch(decision, branchIndex, parentId) {
+    if (branchIndex >= decision.branches.length) {
+      return buildOutcomeList(decision.elseOutcomes, parentId);
+    }
+
+    const branch = decision.branches[branchIndex];
+    if (!branch.conditions.length) {
+      return buildOutcomeList(branch.outcomes, parentId);
+    }
+
+    return [buildConditionExpression(
+      branch.conditions,
+      branch.mode,
+      0,
+      parentId,
+      0,
+      (successParentId) => buildOutcomeList(branch.outcomes, successParentId),
+      (failureParentId) => buildDecisionBranch(decision, branchIndex + 1, failureParentId)
+    )];
+  }
+
+  function buildOutcomeList(outcomes, parentId) {
+    return outcomes.map((outcome, index) => buildNativeOutcome(outcome, parentId, index));
+  }
+
+  function buildConditionExpression(conditions, mode, conditionIndex, parentId, index, onSuccess, onFailure) {
     const condition = conditions[conditionIndex];
     const conditionId = guid();
     const trueGroupId = guid();
     const falseGroupId = guid();
-    const trueChildren = conditionIndex + 1 < conditions.length
-      ? [buildCondition(conditions, outcomes, conditionIndex + 1, trueGroupId, 0)]
-      : outcomes.map((outcome, outcomeIndex) => buildNativeOutcome(outcome, trueGroupId, outcomeIndex));
+    const isLast = conditionIndex + 1 >= conditions.length;
+    const trueChildren = mode === "any"
+      ? onSuccess(trueGroupId)
+      : isLast
+        ? onSuccess(trueGroupId)
+        : [buildConditionExpression(
+          conditions,
+          mode,
+          conditionIndex + 1,
+          trueGroupId,
+          0,
+          onSuccess,
+          onFailure
+        )];
+    const falseChildren = mode === "any" && !isLast
+      ? [buildConditionExpression(
+        conditions,
+        mode,
+        conditionIndex + 1,
+        falseGroupId,
+        0,
+        onSuccess,
+        onFailure
+      )]
+      : onFailure(falseGroupId);
 
     const trueGroup = {
       random: false,
@@ -233,7 +319,7 @@
     };
     const falseGroup = {
       random: false,
-      subActions: [],
+      subActions: falseChildren,
       id: falseGroupId,
       weight: 0,
       type: 99902,
@@ -384,11 +470,11 @@
     const errors = [];
     const value = config && typeof config === "object" ? config : {};
     const trigger = value.trigger && typeof value.trigger === "object" ? value.trigger : {};
-    const conditions = Array.isArray(value.conditions) ? value.conditions : [];
-    const outcomes = Array.isArray(value.outcomes) ? value.outcomes : [];
+    const decision = normalizeDecisionModel(value);
+    const allOutcomes = getAllConfiguredOutcomes(value);
 
     if (!String(value.actionName || "").trim()) errors.push("Enter an action name before creating the import string.");
-    if (!outcomes.length) errors.push("Add at least one sub-action before creating the import string.");
+    if (!allOutcomes.length) errors.push("Add at least one sub-action before creating the import string.");
 
     if (includesCommandTrigger(value)) {
       const label = String(trigger.externalLabel || "").trim();
@@ -401,77 +487,108 @@
       }
     }
 
+    if (
+      (decision.branches.length > 1 || decision.elseOutcomes.length > 0) &&
+      decision.branches[0] &&
+      decision.branches[0].conditions.length === 0
+    ) {
+      errors.push("Add at least one condition to the IF branch before using ELSE IF or ELSE.");
+    }
+
+    validateConditionList(decision.automaticConditions, "Automatic condition", errors);
+    decision.branches.forEach((branch, branchIndex) => {
+      const conditionLabel = branchIndex === 0 ? "Condition" : `Else-if ${branchIndex} condition`;
+      const outcomeLabel = branchIndex === 0 ? "" : `Else-if ${branchIndex}`;
+
+      if (branchIndex > 0 && branch.conditions.length === 0) {
+        errors.push(`Else-if ${branchIndex} needs at least one condition.`);
+      }
+      if (branch.conditions.length > 0 && branch.outcomes.length === 0) {
+        errors.push(`${branchIndex === 0 ? "The IF branch" : `Else-if ${branchIndex}`} needs at least one sub-action.`);
+      }
+
+      validateConditionList(branch.conditions, conditionLabel, errors);
+      validateOutcomeList(branch.outcomes, outcomeLabel, errors);
+    });
+    validateOutcomeList(decision.elseOutcomes, "Else", errors);
+
+    return [...new Set(errors)];
+  }
+
+  function validateConditionList(conditions, label, errors) {
     conditions.forEach((condition, index) => {
       const number = index + 1;
+      const subject = `${label} ${number}`;
       const token = String(condition.token || "");
       const operator = String(condition.operator || "");
       const type = String(condition.type || "string");
 
       if (!(/^%[^%]+%$/.test(token) || /^~[^~]+~$/.test(token))) {
-        errors.push(`Condition ${number} needs a valid %argument% or ~persistedGlobal~ token.`);
+        errors.push(`${subject} needs a valid %argument% or ~persistedGlobal~ token.`);
       }
       if (!Object.prototype.hasOwnProperty.call(CONDITION_OPERATIONS, operator)) {
-        errors.push(`Condition ${number} uses an unsupported operator.`);
+        errors.push(`${subject} uses an unsupported operator.`);
       }
-      if (!["string", "number", "boolean"].includes(type)) errors.push(`Condition ${number} uses an unsupported value type.`);
+      if (!["string", "number", "boolean"].includes(type)) errors.push(`${subject} uses an unsupported value type.`);
       if (operator !== "Is Null or Empty" && !String(condition.value ?? "").trim()) {
-        errors.push(`Condition ${number} needs a comparison value.`);
+        errors.push(`${subject} needs a comparison value.`);
       }
       if (type === "number" && operator !== "Is Null or Empty" && !Number.isFinite(Number(condition.value))) {
-        errors.push(`Condition ${number} needs a numeric comparison value.`);
+        errors.push(`${subject} needs a numeric comparison value.`);
       }
       if (type === "boolean" && operator !== "Is Null or Empty" && !/^(true|false)$/i.test(String(condition.value))) {
-        errors.push(`Condition ${number} needs True or False.`);
+        errors.push(`${subject} needs True or False.`);
       }
     });
+  }
 
+  function validateOutcomeList(outcomes, label, errors) {
     outcomes.forEach((outcome, index) => {
       const number = index + 1;
+      const subject = label ? `${label} sub-action ${number}` : `Sub-action ${number}`;
       switch (outcome.type) {
         case "sound": {
-          if (!String(outcome.file || "").trim()) errors.push(`Sub-action ${number}: choose a sound file.`);
+          if (!String(outcome.file || "").trim()) errors.push(`${subject}: choose a sound file.`);
           const volume = Number(outcome.volume);
           if (!Number.isFinite(volume) || volume < 0 || volume > 100) {
-            errors.push(`Sub-action ${number}: volume must be from 0 to 100.`);
+            errors.push(`${subject}: volume must be from 0 to 100.`);
           }
           break;
         }
         case "tts":
-          if (!String(outcome.voiceAlias || "").trim()) errors.push(`Sub-action ${number}: enter the Speaker.bot voice alias.`);
-          if (!String(outcome.message || "").trim()) errors.push(`Sub-action ${number}: enter the text to speak.`);
+          if (!String(outcome.voiceAlias || "").trim()) errors.push(`${subject}: enter the Speaker.bot voice alias.`);
+          if (!String(outcome.message || "").trim()) errors.push(`${subject}: enter the text to speak.`);
           break;
         case "chat":
-          if (!["Twitch", "Kick", "YouTube"].includes(outcome.platform)) errors.push(`Sub-action ${number}: choose a supported chat platform.`);
-          if (!String(outcome.message || "").trim()) errors.push(`Sub-action ${number}: enter the chat message.`);
+          if (!["Twitch", "Kick", "YouTube"].includes(outcome.platform)) errors.push(`${subject}: choose a supported chat platform.`);
+          if (!String(outcome.message || "").trim()) errors.push(`${subject}: enter the chat message.`);
           if (outcome.platform === "YouTube" && extractTokens(outcome.message).length) {
-            errors.push(`Sub-action ${number}: YouTube's native Send Message sub-action only supports plain text.`);
+            errors.push(`${subject}: YouTube's native Send Message sub-action only supports plain text.`);
           }
           break;
         case "obs":
           if (!String(outcome.scene || "").trim() || !String(outcome.source || "").trim()) {
-            errors.push(`Sub-action ${number}: choose both the OBS scene and source.`);
+            errors.push(`${subject}: choose both the OBS scene and source.`);
           }
           break;
         case "run-action":
-          if (!String(outcome.actionName || "").trim()) errors.push(`Sub-action ${number}: enter the action to run.`);
+          if (!String(outcome.actionName || "").trim()) errors.push(`${subject}: enter the action to run.`);
           break;
         case "keyboard":
           try {
             parseKeyboardShortcut(outcome.key);
           } catch (error) {
-            errors.push(`Sub-action ${number}: ${error.message}`);
+            errors.push(`${subject}: ${error.message}`);
           }
           break;
         case "custom":
-          errors.push(`Sub-action ${number}: choose a specific supported sub-action before creating a native import.`);
+          errors.push(`${subject}: choose a specific supported sub-action before creating a native import.`);
           break;
         default:
-          errors.push(`Sub-action ${number}: choose a supported sub-action type.`);
+          errors.push(`${subject}: choose a supported sub-action type.`);
           break;
       }
     });
-
-    return [...new Set(errors)];
   }
 
   function includesCommandTrigger(config) {
